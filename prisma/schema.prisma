@@ -84,6 +84,7 @@ model Event {
   id              String      @id @default(uuid())
   organizationId  String?     @map("organization_id")
   title           String
+  description     String?
   targetGoal      Decimal?    @map("target_goal") @db.Decimal(14, 2)
   isPermanent     Boolean     @default(false) @map("is_permanent")
   gatewayWalletId String?     @map("gateway_wallet_id")

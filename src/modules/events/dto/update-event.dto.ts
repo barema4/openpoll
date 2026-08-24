@@ -7,6 +7,10 @@ export class UpdateEventDto {
   title?: string;
 
   @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
   @IsNumber()
   targetGoal?: number;
 

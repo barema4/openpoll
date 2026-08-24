@@ -17,6 +17,7 @@ export class EventsService {
       data: {
         organizationId: dto.organizationId,
         title: dto.title,
+        description: dto.description,
         targetGoal: dto.targetGoal,
         isPermanent: dto.isPermanent ?? false,
         gatewayWalletId: dto.gatewayWalletId,
@@ -49,6 +50,7 @@ export class EventsService {
       where: { id: eventId },
       data: {
         title: dto.title,
+        description: dto.description,
         targetGoal: dto.targetGoal,
         gatewayWalletId: dto.gatewayWalletId,
       },
