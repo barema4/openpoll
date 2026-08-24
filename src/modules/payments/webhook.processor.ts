@@ -44,34 +44,52 @@ export class WebhookProcessor extends WorkerHost {
       );
     }
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        invoiceId: event.invoiceId,
-        eventId,
-        providerReference: event.providerReference,
-        paymentRail: event.paymentRail,
-        amountSettled: event.amountSettled,
-        status: event.status,
-      },
-    });
-
-    if (event.status === TransactionStatus.SUCCESS && event.invoiceId) {
-      const invoice = await this.prisma.invoice.findUnique({
-        where: { id: event.invoiceId },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.transaction.create({
+        data: {
+          invoiceId: event.invoiceId,
+          eventId,
+          providerReference: event.providerReference,
+          paymentRail: event.paymentRail,
+          amountSettled: event.amountSettled,
+          status: event.status,
+        },
       });
-      // Only flip status for single-use invoices (expiresAt set); permanent
-      // links stay PENDING/open since they accept repeated contributions.
-      if (
-        invoice &&
-        invoice.expiresAt !== null &&
-        invoice.status !== InvoiceStatus.PAID
-      ) {
-        await this.prisma.invoice.update({
-          where: { id: invoice.id },
-          data: { status: InvoiceStatus.PAID },
+
+      // Single-use invoices carry a fixed target and accept repeated partial
+      // payments — track the running total and only close (PAID) once it's
+      // met. Permanent links are uncapped and never change status here.
+      if (event.status === TransactionStatus.SUCCESS && event.invoiceId) {
+        const invoice = await tx.invoice.findUnique({
+          where: { id: event.invoiceId },
         });
+
+        if (
+          invoice &&
+          invoice.expiresAt !== null &&
+          invoice.status !== InvoiceStatus.PAID
+        ) {
+          const updated = await tx.invoice.update({
+            where: { id: event.invoiceId },
+            data: { amountPaid: { increment: event.amountSettled } },
+          });
+
+          const target = Number(invoice.amountRequested ?? 0);
+          const paid = Number(updated.amountPaid);
+          const nextStatus =
+            paid >= target ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID;
+
+          if (nextStatus !== updated.status) {
+            await tx.invoice.update({
+              where: { id: event.invoiceId },
+              data: { status: nextStatus },
+            });
+          }
+        }
       }
-    }
+
+      return created;
+    });
 
     await this.audit.record({
       eventId,

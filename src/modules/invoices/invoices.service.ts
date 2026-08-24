@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -6,6 +10,10 @@ import { InvoiceStatus } from '../../../generated/prisma/enums';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 
 const DEFAULT_EXPIRY_DAYS = 30;
+
+const INVOICE_PUBLIC_INCLUDE = {
+  event: { select: { id: true, title: true, isPermanent: true } },
+} as const;
 
 @Injectable()
 export class InvoicesService {
@@ -16,6 +24,16 @@ export class InvoicesService {
 
   async create(userId: string, dto: CreateInvoiceDto) {
     const isPermanent = dto.isPermanent ?? false;
+
+    // Single-use invoices track partial payments against a fixed target, so
+    // they need a target amount to know when they've been fully paid.
+    // Permanent links are uncapped — the contributor picks an amount each time.
+    if (!isPermanent && !dto.amountRequested) {
+      throw new BadRequestException(
+        'amountRequested is required for single-use invoices (omit it, or set isPermanent, for an open-ended link)',
+      );
+    }
+
     const expiresAt = isPermanent
       ? null
       : new Date(
@@ -56,25 +74,20 @@ export class InvoicesService {
   async findByToken(secureToken: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { secureToken },
-      include: {
-        event: { select: { id: true, title: true, isPermanent: true } },
-      },
+      include: INVOICE_PUBLIC_INCLUDE,
     });
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
     }
 
-    if (
-      invoice.expiresAt &&
-      invoice.expiresAt < new Date() &&
-      invoice.status === InvoiceStatus.PENDING
-    ) {
+    const isOpen =
+      invoice.status === InvoiceStatus.PENDING ||
+      invoice.status === InvoiceStatus.PARTIALLY_PAID;
+    if (invoice.expiresAt && invoice.expiresAt < new Date() && isOpen) {
       return this.prisma.invoice.update({
         where: { id: invoice.id },
         data: { status: InvoiceStatus.EXPIRED },
-        include: {
-          event: { select: { id: true, title: true, isPermanent: true } },
-        },
+        include: INVOICE_PUBLIC_INCLUDE,
       });
     }
 

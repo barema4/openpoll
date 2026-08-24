@@ -141,6 +141,7 @@ model Allocation {
 
 enum InvoiceStatus {
   PENDING
+  PARTIALLY_PAID
   PAID
   EXPIRED
 }
@@ -151,7 +152,12 @@ model Invoice {
   contributorName  String?       @map("contributor_name")
   contributorEmail String?       @map("contributor_email")
   secureToken      String        @unique @map("secure_token")
+  // Required for single-use invoices (expiresAt set) — the partial-payment
+  // target. Null/ignored for permanent links, which are uncapped.
   amountRequested  Decimal?      @map("amount_requested") @db.Decimal(14, 2)
+  // Running total of SUCCESS transactions applied to this invoice. Only
+  // meaningful for single-use invoices; permanent links leave this at 0.
+  amountPaid       Decimal       @default(0) @map("amount_paid") @db.Decimal(14, 2)
   status           InvoiceStatus @default(PENDING)
   expiresAt        DateTime?     @map("expires_at")
   categoryTag      String?       @map("category_tag")

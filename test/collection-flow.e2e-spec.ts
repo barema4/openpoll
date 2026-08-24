@@ -184,3 +184,183 @@ describe('Collection flow (e2e)', () => {
       .expect(401);
   });
 });
+
+/**
+ * Coverage for partial payments: a single-use invoice carries a fixed
+ * amountRequested and accepts repeated partial webhook payments, moving
+ * PENDING -> PARTIALLY_PAID -> PAID as the running total closes in on the
+ * target — while a permanent link stays uncapped and open indefinitely.
+ */
+describe('Partial payments (e2e)', () => {
+  let app: INestApplication<App>;
+  const runId = Date.now();
+  const email = `partial-${runId}@example.com`;
+  const password = 'password123';
+
+  let accessToken: string;
+  let eventId: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication({ rawBody: true });
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
+    await app.init();
+
+    const reg = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email, password, name: 'Partial Payer' })
+      .expect(201);
+    accessToken = reg.body.accessToken;
+
+    const org = await request(app.getHttpServer())
+      .post('/organizations')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ name: 'Partial Org', type: 'OTHER' })
+      .expect(201);
+
+    const evt = await request(app.getHttpServer())
+      .post('/events')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        organizationId: org.body.id,
+        title: 'Partial Event',
+        isPermanent: false,
+      })
+      .expect(201);
+    eventId = evt.body.id;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function sendSettledWebhook(
+    invoiceId: string,
+    amountMajorUnits: number,
+  ) {
+    const reference = `partial_ref_${runId}_${amountMajorUnits}_${Math.random().toString(36).slice(2)}`;
+    const payload = {
+      event: 'charge.success',
+      data: {
+        reference,
+        amount: amountMajorUnits * 100,
+        channel: 'card',
+        status: 'success',
+        metadata: { invoiceId, eventId },
+      },
+    };
+    const rawBody = JSON.stringify(payload);
+    const signature = createHmac('sha512', process.env.PAYSTACK_WEBHOOK_SECRET!)
+      .update(rawBody)
+      .digest('hex');
+
+    await request(app.getHttpServer())
+      .post('/payments/webhooks/paystack')
+      .set('Content-Type', 'application/json')
+      .set('x-paystack-signature', signature)
+      .send(rawBody)
+      .expect(200);
+  }
+
+  async function pollInvoice(
+    invoiceId: string,
+    until: (invoice: any) => boolean,
+  ) {
+    let invoice: any;
+    for (let i = 0; i < 20; i++) {
+      const res = await request(app.getHttpServer())
+        .get(`/invoices/${invoiceId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      invoice = res.body;
+      if (until(invoice)) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return invoice;
+  }
+
+  it('rejects creating a single-use invoice without an amountRequested', async () => {
+    await request(app.getHttpServer())
+      .post('/invoices')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ eventId, isPermanent: false })
+      .expect(400);
+  });
+
+  it('moves a single-use invoice through PARTIALLY_PAID to PAID across two webhooks', async () => {
+    const invoiceRes = await request(app.getHttpServer())
+      .post('/invoices')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ eventId, amountRequested: 300, expiresInDays: 7 })
+      .expect(201);
+    const invoiceId = invoiceRes.body.id;
+
+    await sendSettledWebhook(invoiceId, 100);
+    const afterFirst = await pollInvoice(
+      invoiceId,
+      (inv) => inv.status !== 'PENDING',
+    );
+    expect(afterFirst.status).toBe('PARTIALLY_PAID');
+    expect(Number(afterFirst.amountPaid)).toBe(100);
+
+    // A checkout attempt for more than the remaining balance (200) is rejected.
+    await request(app.getHttpServer())
+      .post(`/payments/checkout/${invoiceRes.body.secureToken}`)
+      .send({ email: 'contributor@example.com', amount: 250 })
+      .expect(400);
+
+    await sendSettledWebhook(invoiceId, 200);
+    const afterSecond = await pollInvoice(
+      invoiceId,
+      (inv) => inv.status === 'PAID',
+    );
+    expect(afterSecond.status).toBe('PAID');
+    expect(Number(afterSecond.amountPaid)).toBe(300);
+
+    const txRes = await request(app.getHttpServer())
+      .get(`/transactions?eventId=${eventId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const invoiceTxs = txRes.body.filter((t: any) => t.invoiceId === invoiceId);
+    expect(invoiceTxs).toHaveLength(2);
+
+    // Fully paid — checkout is rejected outright now.
+    await request(app.getHttpServer())
+      .post(`/payments/checkout/${invoiceRes.body.secureToken}`)
+      .send({ email: 'contributor@example.com', amount: 1 })
+      .expect(400);
+  });
+
+  it('leaves a permanent link uncapped and reusable across multiple webhooks', async () => {
+    const linkRes = await request(app.getHttpServer())
+      .post('/invoices')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ eventId, isPermanent: true, categoryTag: 'tithe' })
+      .expect(201);
+    const invoiceId = linkRes.body.id;
+    expect(linkRes.body.expiresAt).toBeNull();
+
+    await sendSettledWebhook(invoiceId, 50);
+    await sendSettledWebhook(invoiceId, 75);
+    await new Promise((r) => setTimeout(r, 500));
+
+    const invoiceRes = await request(app.getHttpServer())
+      .get(`/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    // Permanent links never flip status regardless of how many payments land.
+    expect(invoiceRes.body.status).toBe('PENDING');
+
+    const txRes = await request(app.getHttpServer())
+      .get(`/transactions?eventId=${eventId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const linkTxs = txRes.body.filter((t: any) => t.invoiceId === invoiceId);
+    expect(linkTxs).toHaveLength(2);
+  });
+});
