@@ -1,4 +1,10 @@
-import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateEventDto {
   @IsOptional()
@@ -9,6 +15,10 @@ export class UpdateEventDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsUrl()
+  coverImageUrl?: string;
 
   @IsOptional()
   @IsNumber()

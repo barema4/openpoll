@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   MinLength,
 } from 'class-validator';
@@ -21,6 +22,10 @@ export class CreateEventDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsUrl()
+  coverImageUrl?: string;
 
   @IsOptional()
   @IsNumber()

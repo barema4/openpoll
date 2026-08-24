@@ -18,6 +18,7 @@ export class EventsService {
         organizationId: dto.organizationId,
         title: dto.title,
         description: dto.description,
+        coverImageUrl: dto.coverImageUrl,
         targetGoal: dto.targetGoal,
         isPermanent: dto.isPermanent ?? false,
         gatewayWalletId: dto.gatewayWalletId,
@@ -51,6 +52,7 @@ export class EventsService {
       data: {
         title: dto.title,
         description: dto.description,
+        coverImageUrl: dto.coverImageUrl,
         targetGoal: dto.targetGoal,
         gatewayWalletId: dto.gatewayWalletId,
       },
