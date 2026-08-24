@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
@@ -39,6 +40,16 @@ export class EventsController {
   @Get()
   listForOrganization(@Query('organizationId') organizationId: string) {
     return this.eventsService.listForOrganization(organizationId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':eventId')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Body() dto: UpdateEventDto,
+  ) {
+    return this.eventsService.update(user.id, eventId, dto);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
