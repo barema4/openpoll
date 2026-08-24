@@ -1,0 +1,252 @@
+// OpenPool (CeleMoney) — Prisma schema
+// See /Users/samrubarema/.claude/plans/floating-inventing-kernighan.md for design rationale.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth / RBAC
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  memberships OrganizationMembership[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+enum OrgRole {
+  MAIN_ORGANIZER
+  TREASURER
+  AUDITOR
+}
+
+model OrganizationMembership {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  organizationId String   @map("organization_id")
+  role           OrgRole
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("organization_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Organizations / Events
+// ---------------------------------------------------------------------------
+
+enum OrganizationType {
+  CHURCH
+  CHAMA
+  SACCO
+  COLLECTIVE
+  OTHER
+}
+
+model Organization {
+  id              String           @id @default(uuid())
+  name            String
+  type            OrganizationType
+  gatewayWalletId String?          @map("gateway_wallet_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  memberships OrganizationMembership[]
+  events      Event[]
+
+  @@map("organizations")
+}
+
+enum EventStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+model Event {
+  id              String      @id @default(uuid())
+  organizationId  String?     @map("organization_id")
+  title           String
+  targetGoal      Decimal?    @map("target_goal") @db.Decimal(14, 2)
+  isPermanent     Boolean     @default(false) @map("is_permanent")
+  gatewayWalletId String?     @map("gateway_wallet_id")
+  status          EventStatus @default(DRAFT)
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  budgetCategories BudgetCategory[]
+  invoices        Invoice[]
+  transactions    Transaction[]
+  disbursements   Disbursement[]
+  auditLogs       AuditLog[]
+
+  @@map("events")
+}
+
+// ---------------------------------------------------------------------------
+// Budget allocation
+// ---------------------------------------------------------------------------
+
+model BudgetCategory {
+  id             String   @id @default(uuid())
+  eventId        String   @map("event_id")
+  name           String
+  estimatedCost  Decimal  @default(0) @map("estimated_cost") @db.Decimal(14, 2)
+  allocatedFunds Decimal  @default(0) @map("allocated_funds") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  disbursements Disbursement[]
+  allocations   Allocation[]
+
+  @@map("budget_categories")
+}
+
+// Explicit join between a settled Transaction and the BudgetCategory it funds.
+// Not in the original SRS ERD, but required so BudgetCategory.allocatedFunds
+// is always derivable/auditable from real inflows rather than hand-edited.
+model Allocation {
+  id               String   @id @default(uuid())
+  transactionId    String   @map("transaction_id")
+  budgetCategoryId String   @map("budget_category_id")
+  amount           Decimal  @db.Decimal(14, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  budgetCategory BudgetCategory @relation(fields: [budgetCategoryId], references: [id], onDelete: Cascade)
+
+  @@map("allocations")
+}
+
+// ---------------------------------------------------------------------------
+// Invoices & permanent multi-use links
+// ---------------------------------------------------------------------------
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  EXPIRED
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  eventId          String        @map("event_id")
+  contributorName  String?       @map("contributor_name")
+  contributorEmail String?       @map("contributor_email")
+  secureToken      String        @unique @map("secure_token")
+  amountRequested  Decimal?      @map("amount_requested") @db.Decimal(14, 2)
+  status           InvoiceStatus @default(PENDING)
+  expiresAt        DateTime?     @map("expires_at")
+  categoryTag      String?       @map("category_tag")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("invoices")
+}
+
+// ---------------------------------------------------------------------------
+// Transactions (settled payments)
+// ---------------------------------------------------------------------------
+
+enum PaymentRail {
+  MOBILE_MONEY
+  CARD
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Transaction {
+  id                String             @id @default(uuid())
+  invoiceId         String?            @map("invoice_id")
+  eventId           String             @map("event_id")
+  providerReference String             @unique @map("provider_reference")
+  paymentRail       PaymentRail        @map("payment_rail")
+  amountSettled     Decimal            @map("amount_settled") @db.Decimal(14, 2)
+  categoryTag       String?            @map("category_tag")
+  status            TransactionStatus  @default(PENDING)
+  timestamp         DateTime           @default(now())
+
+  invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  allocations Allocation[]
+
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Disbursements — modeled now, Phase 2 feature (no API surface in Phase 1)
+// ---------------------------------------------------------------------------
+
+enum DisbursementTransferType {
+  VENDOR_PAYOUT
+  ORGANIZER_WITHDRAWAL
+}
+
+enum DisbursementStatus {
+  PENDING
+  QUEUED
+  SUCCESS
+  FAILED
+}
+
+model Disbursement {
+  id                      String                   @id @default(uuid())
+  eventId                 String                   @map("event_id")
+  budgetCategoryId        String?                  @map("budget_category_id")
+  transferType            DisbursementTransferType @map("transfer_type")
+  recipientName           String                   @map("recipient_name")
+  recipientBankCode       String?                  @map("recipient_bank_code")
+  recipientAccountNumber  String                   @map("recipient_account_number")
+  amount                  Decimal                  @db.Decimal(14, 2)
+  gatewayTransferRef      String?                  @map("gateway_transfer_ref")
+  status                  DisbursementStatus       @default(PENDING)
+  initiatedBy             String                   @map("initiated_by")
+  approvedBy              String?                  @map("approved_by")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+
+  event          Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  budgetCategory BudgetCategory? @relation(fields: [budgetCategoryId], references: [id], onDelete: SetNull)
+
+  @@map("disbursements")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  eventId        String?  @map("event_id")
+  userId         String?  @map("user_id")
+  action         String
+  payloadSnapshot Json?   @map("payload_snapshot")
+  timestamp      DateTime @default(now())
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

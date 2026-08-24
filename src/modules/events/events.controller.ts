@@ -1,0 +1,53 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { EventsService } from './events.service';
+import { CreateEventDto } from './dto/create-event.dto';
+import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { OrgRole } from '../../../generated/prisma/enums';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
+
+@UseGuards(JwtAuthGuard, OrgRolesGuard)
+@Controller('events')
+export class EventsController {
+  constructor(private readonly eventsService: EventsService) {}
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Post()
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateEventDto) {
+    return this.eventsService.create(user.id, dto);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get(':eventId')
+  findOne(@Param('eventId') eventId: string) {
+    return this.eventsService.findOne(eventId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get()
+  listForOrganization(@Query('organizationId') organizationId: string) {
+    return this.eventsService.listForOrganization(organizationId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':eventId/status')
+  updateStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Body() dto: UpdateEventStatusDto,
+  ) {
+    return this.eventsService.updateStatus(user.id, eventId, dto.status);
+  }
+}

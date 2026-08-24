@@ -1,0 +1,44 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { InvoicesService } from './invoices.service';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { OrgRole } from '../../../generated/prisma/enums';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
+
+@UseGuards(JwtAuthGuard, OrgRolesGuard)
+@Controller('invoices')
+export class InvoicesController {
+  constructor(private readonly invoicesService: InvoicesService) {}
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Post()
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateInvoiceDto,
+  ) {
+    return this.invoicesService.create(user.id, dto);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get(':invoiceId')
+  findOne(@Param('invoiceId') invoiceId: string) {
+    return this.invoicesService.findOne(invoiceId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get()
+  listForEvent(@Query('eventId') eventId: string) {
+    return this.invoicesService.listForEvent(eventId);
+  }
+}
