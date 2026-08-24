@@ -30,6 +30,16 @@ export class InvoicesController {
     return this.invoicesService.create(user.id, dto);
   }
 
+  // Registered before ':invoiceId' — otherwise Express would match
+  // "contributors" as an invoiceId param instead of this static route.
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get('contributors')
+  getContributors(@Query('eventId') eventId: string) {
+    return this.invoicesService.getContributorSummary(eventId, {
+      includePhone: true,
+    });
+  }
+
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get(':invoiceId')
   findOne(@Param('invoiceId') invoiceId: string) {

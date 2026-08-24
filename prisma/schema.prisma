@@ -148,11 +148,21 @@ enum InvoiceStatus {
   EXPIRED
 }
 
+// Distinguishes a treasurer/organizer-issued invoice from a contributor's
+// own public, unauthenticated self-pledge — same payment machinery either
+// way, but callers (listings, moderation) need to tell them apart.
+enum InvoiceSource {
+  ORGANIZER
+  PUBLIC_PLEDGE
+}
+
 model Invoice {
   id               String        @id @default(uuid())
   eventId          String        @map("event_id")
   contributorName  String?       @map("contributor_name")
   contributorEmail String?       @map("contributor_email")
+  contributorPhone String?       @map("contributor_phone")
+  source           InvoiceSource @default(ORGANIZER)
   secureToken      String        @unique @map("secure_token")
   // Required for single-use invoices (expiresAt set) — the partial-payment
   // target. Null/ignored for permanent links, which are uncapped.

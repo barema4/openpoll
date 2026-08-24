@@ -22,6 +22,10 @@ export class CreateInvoiceDto {
   contributorEmail?: string;
 
   @IsOptional()
+  @IsString()
+  contributorPhone?: string;
+
+  @IsOptional()
   @IsNumber()
   @IsPositive()
   amountRequested?: number;
