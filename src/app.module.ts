@@ -34,6 +34,15 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         connection: { url: config.get<string>('REDIS_URL') },
+        // Jest runs each e2e spec file in its own process, but they all share
+        // one Redis instance/DB — without a per-process key prefix, one test
+        // file's BullMQ worker can dequeue and process another test file's
+        // job, whose in-memory test doubles (e.g. FakePaymentProvider) know
+        // nothing about it. Scope queue keys per-process in test only.
+        prefix:
+          config.get<string>('NODE_ENV') === 'test'
+            ? `bull-test-${process.pid}`
+            : undefined,
       }),
     }),
     PrismaModule,

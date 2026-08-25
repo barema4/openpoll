@@ -1,9 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { PAYMENT_PROVIDER } from '../src/modules/payments/providers/payment-provider.interface';
+import { TransactionStatus } from '../generated/prisma/enums';
+import { FakePaymentProvider } from './fakes/fake-payment-provider';
 
 /**
  * Coverage for the public pledge/contributor-tracking feature: a contributor
@@ -14,6 +18,7 @@ import { AppModule } from '../src/app.module';
  */
 describe('Contributor tracking (e2e)', () => {
   let app: INestApplication<App>;
+  let fakeProvider: FakePaymentProvider;
   const runId = Date.now();
   const email = `contrib-${runId}@example.com`;
   const password = 'password123';
@@ -24,13 +29,21 @@ describe('Contributor tracking (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PAYMENT_PROVIDER)
+      .useFactory({
+        factory: (config: ConfigService) => new FakePaymentProvider(config),
+        inject: [ConfigService],
+      })
+      .compile();
 
     app = moduleFixture.createNestApplication({ rawBody: true });
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
     await app.init();
+
+    fakeProvider = moduleFixture.get(PAYMENT_PROVIDER);
 
     const reg = await request(app.getHttpServer())
       .post('/auth/register')
@@ -65,6 +78,12 @@ describe('Contributor tracking (e2e)', () => {
     amountMajorUnits: number,
   ) {
     const reference = `contrib_ref_${runId}_${Math.random().toString(36).slice(2)}`;
+    fakeProvider.registerVerification(reference, {
+      status: TransactionStatus.SUCCESS,
+      amountSettled: amountMajorUnits,
+      currency: 'KES',
+    });
+
     const payload = {
       event: 'charge.success',
       data: {
@@ -86,6 +105,25 @@ describe('Contributor tracking (e2e)', () => {
       .set('x-paystack-signature', signature)
       .send(rawBody)
       .expect(200);
+  }
+
+  async function pollUntil(
+    check: () => Promise<boolean>,
+    attempts = 30,
+    delayMs = 250,
+  ) {
+    for (let i = 0; i < attempts; i++) {
+      if (await check()) return;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  async function invoiceStatus(invoiceId: string): Promise<string> {
+    const res = await request(app.getHttpServer())
+      .get(`/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    return res.body.status;
   }
 
   it('rejects a pledge missing contributorPhone', async () => {
@@ -127,7 +165,13 @@ describe('Contributor tracking (e2e)', () => {
     // Alice pays in full, Bob pays half, Carol doesn't pay at all.
     await sendSettledWebhook(alice.body.id, 100);
     await sendSettledWebhook(bob.body.id, 25);
-    await new Promise((r) => setTimeout(r, 500));
+    await pollUntil(async () => {
+      const [aliceStatus, bobStatus] = await Promise.all([
+        invoiceStatus(alice.body.id),
+        invoiceStatus(bob.body.id),
+      ]);
+      return aliceStatus !== 'PENDING' && bobStatus !== 'PENDING';
+    });
 
     const authed = await request(app.getHttpServer())
       .get(`/invoices/contributors?eventId=${eventId}`)
@@ -163,7 +207,7 @@ describe('Contributor tracking (e2e)', () => {
     expect(
       publicSummary.body.buckets.fullyPaid.map((c: any) => c.contributorName),
     ).toEqual(['Alice']);
-  });
+  }, 15000);
 
   it('rejects unauthenticated access to the phone-including summary', async () => {
     await request(app.getHttpServer())

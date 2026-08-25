@@ -10,6 +10,8 @@ export interface InitializeChargeParams {
   reference: string;
   subaccountCode?: string;
   metadata?: Record<string, unknown>;
+  /** Where the payer's browser returns to after paying. */
+  callbackUrl?: string;
 }
 
 export interface InitializeChargeResult {
@@ -29,6 +31,13 @@ export interface ParsedWebhookEvent {
   eventId?: string;
 }
 
+export interface VerifiedTransaction {
+  status: TransactionStatus;
+  /** Major currency units. */
+  amountSettled: number;
+  currency: string;
+}
+
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
 
 export interface PaymentProvider {
@@ -40,4 +49,12 @@ export interface PaymentProvider {
     signatureHeader: string | undefined,
   ): boolean;
   parseWebhookEvent(rawBody: Buffer): ParsedWebhookEvent;
+  /**
+   * Defense-in-depth: an independent, server-to-server confirmation of a
+   * transaction's status/amount directly from the gateway, called before
+   * crediting anything — a webhook signature check alone isn't treated as
+   * sufficient for a financial credit. See Paystack's own guidance:
+   * https://paystack.com/docs/payments/verify-payments/
+   */
+  verifyTransaction(reference: string): Promise<VerifiedTransaction>;
 }

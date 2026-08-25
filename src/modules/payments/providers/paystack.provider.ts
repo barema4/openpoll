@@ -10,6 +10,7 @@ import type {
   InitializeChargeResult,
   ParsedWebhookEvent,
   PaymentProvider,
+  VerifiedTransaction,
 } from './payment-provider.interface';
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
@@ -21,6 +22,16 @@ interface PaystackInitializeResponse {
     authorization_url: string;
     access_code: string;
     reference: string;
+  };
+}
+
+interface PaystackVerifyResponse {
+  status: boolean;
+  message?: string;
+  data?: {
+    status: string;
+    amount: number;
+    currency: string;
   };
 }
 
@@ -56,6 +67,7 @@ export class PaystackProvider implements PaymentProvider {
           reference: params.reference,
           subaccount: params.subaccountCode,
           metadata: params.metadata,
+          callback_url: params.callbackUrl,
         }),
       },
     );
@@ -71,6 +83,30 @@ export class PaystackProvider implements PaymentProvider {
       authorizationUrl: body.data.authorization_url,
       accessCode: body.data.access_code,
       reference: body.data.reference,
+    };
+  }
+
+  async verifyTransaction(reference: string): Promise<VerifiedTransaction> {
+    const response = await fetch(
+      `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        },
+      },
+    );
+
+    const body = (await response.json()) as PaystackVerifyResponse;
+    if (!response.ok || !body.status || !body.data) {
+      throw new BadGatewayException(
+        `Paystack transaction verification failed: ${body.message ?? response.statusText}`,
+      );
+    }
+
+    return {
+      status: mapStatus('', body.data.status),
+      amountSettled: body.data.amount / 100,
+      currency: body.data.currency,
     };
   }
 

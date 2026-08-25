@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Prisma } from '../../../generated/prisma/client';
@@ -19,6 +20,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly config: ConfigService,
   ) {}
 
   async initializeCheckout(token: string, dto: InitiateCheckoutDto) {
@@ -54,12 +56,17 @@ export class PaymentsService {
       invoice.event.organization?.gatewayWalletId;
     const reference = `op_${randomBytes(12).toString('hex')}`;
 
+    const appBaseUrl = this.config
+      .get<string>('APP_BASE_URL')!
+      .replace(/\/$/, '');
+
     const result = await this.provider.initializeCharge({
       email: dto.email,
       amount,
       reference,
       subaccountCode: subaccountCode ?? undefined,
       metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
+      callbackUrl: `${appBaseUrl}/public/receipts`,
     });
 
     return result;

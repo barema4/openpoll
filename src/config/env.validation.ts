@@ -27,6 +27,11 @@ export const envSchema = z.object({
   // construct shareable /pay/:token links. No hosted checkout page exists
   // yet in this backend-only repo; this is a placeholder for when it does.
   PUBLIC_CHECKOUT_BASE_URL: z.string().url().default('http://localhost:3001'),
+
+  // This API's own public origin, reachable by a payer's browser — used as
+  // the Paystack callback_url so the browser has somewhere to land after
+  // paying (the public receipt-lookup endpoint) even with no frontend yet.
+  APP_BASE_URL: z.string().url().default('http://localhost:3000'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
