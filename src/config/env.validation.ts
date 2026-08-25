@@ -22,6 +22,11 @@ export const envSchema = z.object({
   PAYSTACK_WEBHOOK_SECRET: z
     .string()
     .min(1, 'PAYSTACK_WEBHOOK_SECRET is required'),
+
+  // Where the (not-yet-built) hosted checkout page lives — used only to
+  // construct shareable /pay/:token links. No hosted checkout page exists
+  // yet in this backend-only repo; this is a placeholder for when it does.
+  PUBLIC_CHECKOUT_BASE_URL: z.string().url().default('http://localhost:3001'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

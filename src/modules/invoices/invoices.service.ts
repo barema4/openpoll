@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -12,6 +13,7 @@ import type {
   ContributorBuckets,
   ContributorEntry,
 } from './contributor-summary.util';
+import { buildInvoiceShareLinks } from './share-links.util';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { CreatePledgeDto } from './dto/create-pledge.dto';
 
@@ -38,6 +40,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(userId: string, dto: CreateInvoiceDto) {
@@ -84,6 +87,28 @@ export class InvoicesService {
 
   findOne(invoiceId: string) {
     return this.prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+  }
+
+  // Pre-filled wa.me / mailto: links the organizer clicks to share this
+  // invoice's payment link themselves — no automated sending, no third-party
+  // account needed (see the WhatsApp-group-summary feature for why).
+  async getShareLinks(invoiceId: string) {
+    const invoice = await this.prisma.invoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+      include: { event: { select: { title: true } } },
+    });
+
+    return buildInvoiceShareLinks({
+      checkoutBaseUrl: this.config.get<string>('PUBLIC_CHECKOUT_BASE_URL')!,
+      secureToken: invoice.secureToken,
+      contributorName: invoice.contributorName,
+      contributorPhone: invoice.contributorPhone,
+      contributorEmail: invoice.contributorEmail,
+      eventTitle: invoice.event.title,
+      amountRequested: invoice.amountRequested
+        ? Number(invoice.amountRequested)
+        : null,
+    });
   }
 
   listForEvent(eventId: string) {

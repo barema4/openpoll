@@ -47,6 +47,12 @@ export class InvoicesController {
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get(':invoiceId/share')
+  getShareLinks(@Param('invoiceId') invoiceId: string) {
+    return this.invoicesService.getShareLinks(invoiceId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get()
   listForEvent(@Query('eventId') eventId: string) {
     return this.invoicesService.listForEvent(eventId);
