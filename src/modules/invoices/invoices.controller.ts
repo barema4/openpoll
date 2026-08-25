@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -16,6 +17,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
+@ApiTags('invoices')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Controller('invoices')
 export class InvoicesController {

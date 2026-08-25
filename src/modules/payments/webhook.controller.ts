@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import type { Request } from 'express';
 import {
@@ -22,6 +23,7 @@ import { WEBHOOK_QUEUE } from './payments.constants';
 // anything is trusted; the actual business logic (transaction upsert, invoice
 // status update) runs asynchronously via BullMQ so retries/backoff (NFR-02)
 // don't block the HTTP response Paystack expects within a few seconds.
+@ApiTags('payments')
 @Controller('payments/webhooks')
 export class WebhookController {
   constructor(
@@ -29,6 +31,9 @@ export class WebhookController {
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
   ) {}
 
+  // Machine-to-machine only (requires a real Paystack HMAC signature over
+  // the raw body) — excluded from the interactive docs UI.
+  @ApiExcludeEndpoint()
   @HttpCode(HttpStatus.OK)
   @Post('paystack')
   async handlePaystackWebhook(

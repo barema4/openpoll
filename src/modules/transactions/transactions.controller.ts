@@ -1,10 +1,13 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 
+@ApiTags('transactions')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
 @Controller('transactions')

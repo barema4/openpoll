@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BudgetCategoriesService } from './budget-categories.service';
 import { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import { AllocateTransactionDto } from './dto/allocate-transaction.dto';
@@ -17,6 +18,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
+@ApiTags('budget-categories')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Controller('budget-categories')
 export class BudgetCategoriesController {

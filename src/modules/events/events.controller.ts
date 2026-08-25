@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -19,6 +20,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
+@ApiTags('events')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Controller('events')
 export class EventsController {

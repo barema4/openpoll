@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
@@ -9,6 +10,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
+@ApiTags('organizations')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Controller('organizations')
 export class OrganizationsController {
