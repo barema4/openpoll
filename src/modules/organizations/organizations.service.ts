@@ -44,6 +44,22 @@ export class OrganizationsService {
     });
   }
 
+  // Self-scoped (not org-scoped) — how a freshly logged-in user discovers
+  // which organizations they belong to, and with what role, without
+  // already knowing an organization's id.
+  async listForUser(userId: string) {
+    const memberships = await this.prisma.organizationMembership.findMany({
+      where: { userId },
+      include: { organization: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return memberships.map((membership) => ({
+      ...membership.organization,
+      role: membership.role,
+    }));
+  }
+
   listMembers(organizationId: string) {
     return this.prisma.organizationMembership.findMany({
       where: { organizationId },

@@ -56,8 +56,8 @@ export class PaymentsService {
       invoice.event.organization?.gatewayWalletId;
     const reference = `op_${randomBytes(12).toString('hex')}`;
 
-    const appBaseUrl = this.config
-      .get<string>('APP_BASE_URL')!
+    const checkoutBaseUrl = this.config
+      .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
       .replace(/\/$/, '');
 
     const result = await this.provider.initializeCharge({
@@ -66,7 +66,7 @@ export class PaymentsService {
       reference,
       subaccountCode: subaccountCode ?? undefined,
       metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
-      callbackUrl: `${appBaseUrl}/public/receipts`,
+      callbackUrl: `${checkoutBaseUrl}/receipt`,
     });
 
     return result;

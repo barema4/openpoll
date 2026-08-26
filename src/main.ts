@@ -23,6 +23,13 @@ async function bootstrap() {
   // Swagger UI serves its own inline scripts/styles, which a strict default
   // CSP blocks — only relax it where docs are actually exposed.
   app.use(helmet({ contentSecurityPolicy: isProduction ? undefined : false }));
+  app.enableCors({
+    origin: config
+      .get<string>('CORS_ORIGIN')!
+      .split(',')
+      .map((origin) => origin.trim()),
+    credentials: true,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
 

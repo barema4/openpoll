@@ -25,6 +25,13 @@ export class OrganizationsController {
     return this.organizationsService.create(user.id, dto);
   }
 
+  // Self-scoped — no @Roles(), so OrgRolesGuard no-ops and this simply
+  // returns whatever organizations the caller is themselves a member of.
+  @Get()
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.organizationsService.listForUser(user.id);
+  }
+
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get(':organizationId')
   findOne(@Param('organizationId') organizationId: string) {

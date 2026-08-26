@@ -23,15 +23,13 @@ export const envSchema = z.object({
     .string()
     .min(1, 'PAYSTACK_WEBHOOK_SECRET is required'),
 
-  // Where the (not-yet-built) hosted checkout page lives — used only to
-  // construct shareable /pay/:token links. No hosted checkout page exists
-  // yet in this backend-only repo; this is a placeholder for when it does.
-  PUBLIC_CHECKOUT_BASE_URL: z.string().url().default('http://localhost:3001'),
+  // Where the hosted frontend (the "pool" Vue app) lives — used to construct
+  // shareable /pay/:token links and as the Paystack callback_url target
+  // (.../receipt) so a payer's browser has somewhere real to land after paying.
+  PUBLIC_CHECKOUT_BASE_URL: z.string().url().default('http://localhost:5173'),
 
-  // This API's own public origin, reachable by a payer's browser — used as
-  // the Paystack callback_url so the browser has somewhere to land after
-  // paying (the public receipt-lookup endpoint) even with no frontend yet.
-  APP_BASE_URL: z.string().url().default('http://localhost:3000'),
+  // Allowed CORS origin(s) for the frontend, comma-separated.
+  CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
