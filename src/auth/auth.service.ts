@@ -20,6 +20,10 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+export interface AuthResponse extends TokenPair {
+  user: { id: string; email: string; name: string };
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -29,7 +33,7 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<AuthResponse> {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -44,10 +48,10 @@ export class AuthService {
 
     await this.audit.record({ userId: user.id, action: 'USER_REGISTERED' });
 
-    return this.issueTokens(user.id, user.email);
+    return this.issueTokens(user);
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -57,10 +61,10 @@ export class AuthService {
 
     await this.audit.record({ userId: user.id, action: 'USER_LOGIN' });
 
-    return this.issueTokens(user.id, user.email);
+    return this.issueTokens(user);
   }
 
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string): Promise<AuthResponse> {
     let payload: JwtPayload;
     try {
       payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
@@ -77,11 +81,15 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    return this.issueTokens(user.id, user.email);
+    return this.issueTokens(user);
   }
 
-  private async issueTokens(userId: string, email: string): Promise<TokenPair> {
-    const payload: JwtPayload = { sub: userId, email };
+  private async issueTokens(user: {
+    id: string;
+    email: string;
+    name: string;
+  }): Promise<AuthResponse> {
+    const payload: JwtPayload = { sub: user.id, email: user.email };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
@@ -98,6 +106,10 @@ export class AuthService {
       }),
     ]);
 
-    return { accessToken, refreshToken };
+    return {
+      user: { id: user.id, email: user.email, name: user.name },
+      accessToken,
+      refreshToken,
+    };
   }
 }
