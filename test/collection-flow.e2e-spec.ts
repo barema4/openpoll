@@ -326,12 +326,15 @@ describe('Partial payments (e2e)', () => {
     return invoice;
   }
 
-  it('rejects creating a single-use invoice without an amountRequested', async () => {
-    await request(app.getHttpServer())
+  it('allows creating a single-use invoice without an amountRequested (an open-amount link)', async () => {
+    const res = await request(app.getHttpServer())
       .post('/invoices')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ eventId, isPermanent: false })
-      .expect(400);
+      .expect(201);
+
+    expect(res.body.amountRequested).toBeNull();
+    expect(res.body.expiresAt).not.toBeNull();
   });
 
   it('moves a single-use invoice through PARTIALLY_PAID to PAID across two webhooks', async () => {

@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -206,12 +202,6 @@ export class InvoicesService {
   }
 
   private async persistInvoice(params: PersistInvoiceParams) {
-    if (!params.isPermanent && !params.amountRequested) {
-      throw new BadRequestException(
-        'amountRequested is required for single-use invoices (omit it, or set isPermanent, for an open-ended link)',
-      );
-    }
-
     const expiresAt = params.isPermanent
       ? null
       : new Date(

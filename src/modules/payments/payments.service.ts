@@ -47,9 +47,15 @@ export class PaymentsService {
       throw new BadRequestException('This invoice has expired');
     }
 
-    const amount = isSingleUse
-      ? this.resolveSingleUseChargeAmount(invoice, dto)
-      : this.resolvePermanentLinkChargeAmount(dto, invoice.amountRequested);
+    // A single-use link with no fixed amountRequested is an open-amount link
+    // (e.g. a pledge that never fixed a number) — resolve it the same way as
+    // a permanent link: the payer decides, no remaining-balance cap.
+    const amount =
+      isSingleUse && invoice.amountRequested !== null
+        ? this.resolveSingleUseChargeAmount(invoice, dto)
+        : this.resolvePermanentLinkChargeAmount(dto, invoice.amountRequested);
+
+    await this.captureContributorIdentity(invoice, dto);
 
     const subaccountCode =
       invoice.event.gatewayWalletId ??
@@ -97,6 +103,31 @@ export class PaymentsService {
       );
     }
     return amount;
+  }
+
+  // Fills in the payer's identity on the invoice if it isn't already set —
+  // never overwrites what the organizer (or an earlier payer) already put
+  // there, so a shared permanent link keeps whichever name got there first.
+  private async captureContributorIdentity(
+    invoice: {
+      id: string;
+      contributorEmail: string | null;
+      contributorName: string | null;
+      contributorPhone: string | null;
+    },
+    dto: InitiateCheckoutDto,
+  ) {
+    const data: Prisma.InvoiceUpdateInput = {};
+    if (!invoice.contributorEmail) data.contributorEmail = dto.email;
+    if (!invoice.contributorName && dto.contributorName) {
+      data.contributorName = dto.contributorName;
+    }
+    if (!invoice.contributorPhone && dto.contributorPhone) {
+      data.contributorPhone = dto.contributorPhone;
+    }
+    if (Object.keys(data).length === 0) return;
+
+    await this.prisma.invoice.update({ where: { id: invoice.id }, data });
   }
 
   // Permanent links are uncapped — every contribution is independent.
