@@ -18,6 +18,7 @@ import {
   type PaymentProvider,
 } from './providers/payment-provider.interface';
 import { WEBHOOK_QUEUE } from './payments.constants';
+import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 
 // Paystack webhook. Signature is verified against the raw request body before
 // anything is trusted; the actual business logic (transaction upsert, invoice
@@ -29,6 +30,8 @@ export class WebhookController {
   constructor(
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
+    @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
+    private readonly personalInvoiceWebhookQueue: Queue,
   ) {}
 
   // Machine-to-machine only (requires a real Paystack HMAC signature over
@@ -46,7 +49,10 @@ export class WebhookController {
     }
 
     const event = this.provider.parseWebhookEvent(rawBody);
-    await this.webhookQueue.add('process-webhook', event, {
+    const queue = event.personalInvoiceId
+      ? this.personalInvoiceWebhookQueue
+      : this.webhookQueue;
+    await queue.add('process-webhook', event, {
       attempts: 5,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: true,

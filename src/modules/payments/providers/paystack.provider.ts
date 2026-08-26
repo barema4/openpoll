@@ -42,7 +42,11 @@ interface PaystackWebhookPayload {
     amount?: number;
     channel?: string;
     status?: string;
-    metadata?: { invoiceId?: string; eventId?: string };
+    metadata?: {
+      invoiceId?: string;
+      eventId?: string;
+      personalInvoiceId?: string;
+    };
   };
 }
 
@@ -145,6 +149,7 @@ export class PaystackProvider implements PaymentProvider {
       paymentRail: mapChannel(data.channel),
       invoiceId: metadata.invoiceId,
       eventId: metadata.eventId,
+      personalInvoiceId: metadata.personalInvoiceId,
     };
   }
 }

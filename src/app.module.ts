@@ -16,6 +16,8 @@ import { BudgetCategoriesModule } from './modules/budget-categories/budget-categ
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { PersonalInvoicesModule } from './modules/personal-invoices/personal-invoices.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
     InvoicesModule,
     PaymentsModule,
     TransactionsModule,
+    PersonalInvoicesModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

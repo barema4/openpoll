@@ -29,6 +29,8 @@ export interface ParsedWebhookEvent {
   paymentRail: PaymentRail;
   invoiceId?: string;
   eventId?: string;
+  /** Set instead of invoiceId/eventId for a standalone personal-invoice charge. */
+  personalInvoiceId?: string;
 }
 
 export interface VerifiedTransaction {
