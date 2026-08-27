@@ -5,15 +5,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { PayoutsService } from '../payouts/payouts.service';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
+import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 
 @Injectable()
 export class OrganizationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly payouts: PayoutsService,
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto) {
@@ -21,7 +24,6 @@ export class OrganizationsService {
       data: {
         name: dto.name,
         type: dto.type,
-        gatewayWalletId: dto.gatewayWalletId,
         memberships: {
           create: { userId, role: OrgRole.MAIN_ORGANIZER },
         },
@@ -36,6 +38,33 @@ export class OrganizationsService {
     });
 
     return organization;
+  }
+
+  async setPayout(userId: string, organizationId: string, dto: SetPayoutDto) {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+
+    const details = await this.payouts.onboard({
+      businessName: organization.name,
+      bankCode: dto.bankCode,
+      bankName: dto.bankName,
+      accountNumber: dto.accountNumber,
+    });
+
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: details,
+    });
+
+    await this.audit.record({
+      userId,
+      action: 'ORGANIZATION_PAYOUT_SET',
+      payload: { organizationId, bankName: dto.bankName },
+    });
+
+    return updated;
   }
 
   findOne(organizationId: string) {

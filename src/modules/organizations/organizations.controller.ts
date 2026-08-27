@@ -1,8 +1,17 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
+import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -52,5 +61,15 @@ export class OrganizationsController {
     @Body() dto: InviteMemberDto,
   ) {
     return this.organizationsService.inviteMember(user.id, organizationId, dto);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER)
+  @Patch(':organizationId/payout')
+  setPayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('organizationId') organizationId: string,
+    @Body() dto: SetPayoutDto,
+  ) {
+    return this.organizationsService.setPayout(user.id, organizationId, dto);
   }
 }

@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { PayoutsService } from '../payouts/payouts.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
+import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { EventStatus } from '../../../generated/prisma/enums';
 
 @Injectable()
@@ -10,6 +12,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly payouts: PayoutsService,
   ) {}
 
   async create(userId: string, dto: CreateEventDto) {
@@ -21,7 +24,6 @@ export class EventsService {
         coverImageUrl: dto.coverImageUrl,
         targetGoal: dto.targetGoal,
         isPermanent: dto.isPermanent ?? false,
-        gatewayWalletId: dto.gatewayWalletId,
       },
     });
 
@@ -54,7 +56,6 @@ export class EventsService {
         description: dto.description,
         coverImageUrl: dto.coverImageUrl,
         targetGoal: dto.targetGoal,
-        gatewayWalletId: dto.gatewayWalletId,
       },
     });
 
@@ -66,6 +67,34 @@ export class EventsService {
     });
 
     return event;
+  }
+
+  async setPayout(userId: string, eventId: string, dto: SetPayoutDto) {
+    const event = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+      select: { title: true },
+    });
+
+    const details = await this.payouts.onboard({
+      businessName: event.title,
+      bankCode: dto.bankCode,
+      bankName: dto.bankName,
+      accountNumber: dto.accountNumber,
+    });
+
+    const updated = await this.prisma.event.update({
+      where: { id: eventId },
+      data: details,
+    });
+
+    await this.audit.record({
+      userId,
+      eventId,
+      action: 'EVENT_PAYOUT_SET',
+      payload: { bankName: dto.bankName },
+    });
+
+    return updated;
   }
 
   async updateStatus(userId: string, eventId: string, status: EventStatus) {

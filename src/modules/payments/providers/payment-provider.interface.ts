@@ -40,6 +40,28 @@ export interface VerifiedTransaction {
   currency: string;
 }
 
+export interface Bank {
+  name: string;
+  code: string;
+}
+
+export interface ResolvedAccount {
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface CreateSubaccountParams {
+  businessName: string;
+  bankCode: string;
+  accountNumber: string;
+  /** Percentage of each charge kept by the platform's main account. 0 = payee keeps 100%. */
+  percentageCharge?: number;
+}
+
+export interface SubaccountResult {
+  subaccountCode: string;
+}
+
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
 
 export interface PaymentProvider {
@@ -59,4 +81,21 @@ export interface PaymentProvider {
    * https://paystack.com/docs/payments/verify-payments/
    */
   verifyTransaction(reference: string): Promise<VerifiedTransaction>;
+  /** The bank directory for payout onboarding — lets a user pick their bank by name. */
+  listBanks(): Promise<Bank[]>;
+  /**
+   * Confirms an account number against a bank and returns the account
+   * holder's name on file, so a user can see they typed it correctly
+   * before it becomes their payout destination.
+   */
+  resolveAccountNumber(
+    accountNumber: string,
+    bankCode: string,
+  ): Promise<ResolvedAccount>;
+  /**
+   * Creates the payout destination itself — a Paystack "subaccount" tied to
+   * a real bank account. The returned code is what gets passed as
+   * `subaccountCode` on every future charge routed to this payee.
+   */
+  createSubaccount(params: CreateSubaccountParams): Promise<SubaccountResult>;
 }

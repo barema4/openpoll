@@ -23,8 +23,4 @@ export class UpdateEventDto {
   @IsOptional()
   @IsNumber()
   targetGoal?: number;
-
-  @IsOptional()
-  @IsString()
-  gatewayWalletId?: string;
 }

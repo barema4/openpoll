@@ -22,6 +22,9 @@ export const envSchema = z.object({
   PAYSTACK_WEBHOOK_SECRET: z
     .string()
     .min(1, 'PAYSTACK_WEBHOOK_SECRET is required'),
+  // Country scope for the bank list / account resolution / subaccount
+  // creation endpoints (Paystack's bank directory is per-country).
+  PAYSTACK_COUNTRY: z.string().default('kenya'),
 
   // Where the hosted frontend (the "pool" Vue app) lives — used to construct
   // shareable /pay/:token links and as the Paystack callback_url target

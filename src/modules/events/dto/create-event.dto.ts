@@ -34,8 +34,4 @@ export class CreateEventDto {
   @IsOptional()
   @IsBoolean()
   isPermanent?: boolean;
-
-  @IsOptional()
-  @IsString()
-  gatewayWalletId?: string;
 }

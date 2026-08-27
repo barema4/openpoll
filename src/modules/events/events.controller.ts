@@ -13,6 +13,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -63,5 +64,15 @@ export class EventsController {
     @Body() dto: UpdateEventStatusDto,
   ) {
     return this.eventsService.updateStatus(user.id, eventId, dto.status);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':eventId/payout')
+  setPayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Body() dto: SetPayoutDto,
+  ) {
+    return this.eventsService.setPayout(user.id, eventId, dto);
   }
 }

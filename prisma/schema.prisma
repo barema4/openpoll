@@ -22,8 +22,13 @@ model User {
   name            String
   // Paystack subaccount code for this user's own payout destination — lets an
   // individual with no Organization still receive money via personal invoices.
-  gatewayWalletId String?  @map("gateway_wallet_id")
-  createdAt       DateTime @default(now()) @map("created_at")
+  // Set only via the bank-account onboarding flow (POST /payouts/resolve-account
+  // + PATCH /users/me/payout) — never accepted as a raw value from a client.
+  gatewayWalletId    String?  @map("gateway_wallet_id")
+  payoutBankName     String?  @map("payout_bank_name")
+  payoutAccountName  String?  @map("payout_account_name")
+  payoutAccountLast4 String?  @map("payout_account_last4")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   memberships       OrganizationMembership[]
   auditLogs         AuditLog[]
@@ -65,11 +70,15 @@ enum OrganizationType {
 }
 
 model Organization {
-  id              String           @id @default(uuid())
-  name            String
-  type            OrganizationType
-  gatewayWalletId String?          @map("gateway_wallet_id")
-  createdAt       DateTime         @default(now()) @map("created_at")
+  id                 String           @id @default(uuid())
+  name               String
+  type               OrganizationType
+  // Set only via the bank-account onboarding flow (PATCH /organizations/:id/payout).
+  gatewayWalletId    String?          @map("gateway_wallet_id")
+  payoutBankName     String?          @map("payout_bank_name")
+  payoutAccountName  String?          @map("payout_account_name")
+  payoutAccountLast4 String?          @map("payout_account_last4")
+  createdAt          DateTime         @default(now()) @map("created_at")
 
   memberships OrganizationMembership[]
   events      Event[]
@@ -85,16 +94,21 @@ enum EventStatus {
 }
 
 model Event {
-  id              String      @id @default(uuid())
-  organizationId  String?     @map("organization_id")
-  title           String
-  description     String?
-  coverImageUrl   String?     @map("cover_image_url")
-  targetGoal      Decimal?    @map("target_goal") @db.Decimal(14, 2)
-  isPermanent     Boolean     @default(false) @map("is_permanent")
-  gatewayWalletId String?     @map("gateway_wallet_id")
-  status          EventStatus @default(DRAFT)
-  createdAt       DateTime    @default(now()) @map("created_at")
+  id                 String      @id @default(uuid())
+  organizationId     String?     @map("organization_id")
+  title              String
+  description        String?
+  coverImageUrl      String?     @map("cover_image_url")
+  targetGoal         Decimal?    @map("target_goal") @db.Decimal(14, 2)
+  isPermanent        Boolean     @default(false) @map("is_permanent")
+  // Optional override of the organization's payout destination. Set only via
+  // the bank-account onboarding flow (PATCH /events/:id/payout).
+  gatewayWalletId    String?     @map("gateway_wallet_id")
+  payoutBankName     String?     @map("payout_bank_name")
+  payoutAccountName  String?     @map("payout_account_name")
+  payoutAccountLast4 String?     @map("payout_account_last4")
+  status             EventStatus @default(DRAFT)
+  createdAt          DateTime    @default(now()) @map("created_at")
 
   organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   budgetCategories BudgetCategory[]

@@ -6,10 +6,14 @@ import {
   TransactionStatus,
 } from '../../../../generated/prisma/enums';
 import type {
+  Bank,
+  CreateSubaccountParams,
   InitializeChargeParams,
   InitializeChargeResult,
   ParsedWebhookEvent,
   PaymentProvider,
+  ResolvedAccount,
+  SubaccountResult,
   VerifiedTransaction,
 } from './payment-provider.interface';
 
@@ -33,6 +37,24 @@ interface PaystackVerifyResponse {
     amount: number;
     currency: string;
   };
+}
+
+interface PaystackBankListResponse {
+  status: boolean;
+  message?: string;
+  data?: { name: string; code: string }[];
+}
+
+interface PaystackResolveAccountResponse {
+  status: boolean;
+  message?: string;
+  data?: { account_number: string; account_name: string };
+}
+
+interface PaystackSubaccountResponse {
+  status: boolean;
+  message?: string;
+  data?: { subaccount_code: string };
 }
 
 interface PaystackWebhookPayload {
@@ -132,6 +154,80 @@ export class PaystackProvider implements PaymentProvider {
     if (expectedBuf.length !== receivedBuf.length) return false;
 
     return timingSafeEqual(expectedBuf, receivedBuf);
+  }
+
+  async listBanks(): Promise<Bank[]> {
+    const country = this.config.get<string>('PAYSTACK_COUNTRY');
+    const response = await fetch(
+      `${PAYSTACK_BASE_URL}/bank?country=${encodeURIComponent(country!)}&currency=KES`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        },
+      },
+    );
+
+    const body = (await response.json()) as PaystackBankListResponse;
+    if (!response.ok || !body.status || !body.data) {
+      throw new BadGatewayException(
+        `Paystack bank list failed: ${body.message ?? response.statusText}`,
+      );
+    }
+
+    return body.data.map((b) => ({ name: b.name, code: b.code }));
+  }
+
+  async resolveAccountNumber(
+    accountNumber: string,
+    bankCode: string,
+  ): Promise<ResolvedAccount> {
+    const response = await fetch(
+      `${PAYSTACK_BASE_URL}/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        },
+      },
+    );
+
+    const body = (await response.json()) as PaystackResolveAccountResponse;
+    if (!response.ok || !body.status || !body.data) {
+      throw new BadGatewayException(
+        `Could not verify that account number: ${body.message ?? response.statusText}`,
+      );
+    }
+
+    return {
+      accountNumber: body.data.account_number,
+      accountName: body.data.account_name,
+    };
+  }
+
+  async createSubaccount(
+    params: CreateSubaccountParams,
+  ): Promise<SubaccountResult> {
+    const response = await fetch(`${PAYSTACK_BASE_URL}/subaccount`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        business_name: params.businessName,
+        settlement_bank: params.bankCode,
+        account_number: params.accountNumber,
+        percentage_charge: params.percentageCharge ?? 0,
+      }),
+    });
+
+    const body = (await response.json()) as PaystackSubaccountResponse;
+    if (!response.ok || !body.status || !body.data) {
+      throw new BadGatewayException(
+        `Paystack subaccount creation failed: ${body.message ?? response.statusText}`,
+      );
+    }
+
+    return { subaccountCode: body.data.subaccount_code };
   }
 
   parseWebhookEvent(rawBody: Buffer): ParsedWebhookEvent {

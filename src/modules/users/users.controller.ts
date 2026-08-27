@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
@@ -18,8 +18,8 @@ export class UsersController {
     return this.usersService.findOne(user.id);
   }
 
-  @Patch('me')
-  updateMe(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(user.id, dto);
+  @Patch('me/payout')
+  setPayout(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetPayoutDto) {
+    return this.usersService.setPayout(user.id, dto);
   }
 }

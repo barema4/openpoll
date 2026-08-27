@@ -2,9 +2,11 @@ import { OrganizationsService } from './organizations.service';
 import { OrgRole } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
+import type { PayoutsService } from '../payouts/payouts.service';
 
 describe('OrganizationsService.listForUser', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
 
   it("flattens memberships into organizations tagged with the caller's role", async () => {
     const memberships = [
@@ -21,7 +23,7 @@ describe('OrganizationsService.listForUser', () => {
     const prisma = {
       organizationMembership: { findMany },
     } as unknown as PrismaService;
-    const service = new OrganizationsService(prisma, audit);
+    const service = new OrganizationsService(prisma, audit, payouts);
 
     const result = await service.listForUser('user-1');
 
@@ -48,7 +50,7 @@ describe('OrganizationsService.listForUser', () => {
     const prisma = {
       organizationMembership: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
-    const service = new OrganizationsService(prisma, audit);
+    const service = new OrganizationsService(prisma, audit, payouts);
 
     expect(await service.listForUser('user-2')).toEqual([]);
   });

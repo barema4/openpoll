@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsString, MinLength } from 'class-validator';
 import { OrganizationType } from '../../../../generated/prisma/enums';
 
 export class CreateOrganizationDto {
@@ -8,8 +8,4 @@ export class CreateOrganizationDto {
 
   @IsEnum(OrganizationType)
   type!: OrganizationType;
-
-  @IsOptional()
-  @IsString()
-  gatewayWalletId?: string;
 }
