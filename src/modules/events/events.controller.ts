@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { CreateQuickEventDto } from './dto/create-quick-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
@@ -32,6 +33,16 @@ export class EventsController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateEventDto) {
     return this.eventsService.create(user.id, dto);
+  }
+
+  // No @Roles() — there's no organization to check membership against yet,
+  // that's the whole point. Any logged-in user can start a quick collection.
+  @Post('quick')
+  createQuick(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateQuickEventDto,
+  ) {
+    return this.eventsService.createQuick(user.id, dto);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)

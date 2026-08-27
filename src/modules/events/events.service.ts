@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
+import { InvoicesService } from '../invoices/invoices.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import type { CreateEventDto } from './dto/create-event.dto';
+import type { CreateQuickEventDto } from './dto/create-quick-event.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { EventStatus } from '../../../generated/prisma/enums';
@@ -13,6 +16,8 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly payouts: PayoutsService,
+    private readonly invoices: InvoicesService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   async create(userId: string, dto: CreateEventDto) {
@@ -34,7 +39,37 @@ export class EventsService {
       payload: { title: event.title, organizationId: event.organizationId },
     });
 
-    return event;
+    // A brand-new event is useless without a way to share it — auto-generate
+    // a permanent, open-amount link immediately instead of making the
+    // organizer make a separate trip to the Links tab. Just a normal Invoice
+    // row; it shows up in that list like any link created by hand.
+    const defaultLink = await this.invoices.create(userId, {
+      eventId: event.id,
+      isPermanent: true,
+    });
+
+    return { ...event, defaultLinkToken: defaultLink.secureToken };
+  }
+
+  // Backs "Quick collection" — skips organization creation entirely for a
+  // solo user by reusing (or lazily creating) their personal organization.
+  async createQuick(userId: string, dto: CreateQuickEventDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { name: true },
+    });
+    const organization = await this.organizations.getOrCreatePersonalOrg(
+      userId,
+      user.name,
+    );
+
+    return this.create(userId, {
+      organizationId: organization.id,
+      title: dto.title,
+      description: dto.description,
+      targetGoal: dto.targetGoal,
+      isPermanent: true,
+    });
   }
 
   findOne(eventId: string) {

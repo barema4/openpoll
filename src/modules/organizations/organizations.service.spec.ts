@@ -55,3 +55,49 @@ describe('OrganizationsService.listForUser', () => {
     expect(await service.listForUser('user-2')).toEqual([]);
   });
 });
+
+describe('OrganizationsService.getOrCreatePersonalOrg', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
+
+  it('reuses an existing personal organization instead of creating a new one', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      organization: { id: 'org-existing', isPersonal: true },
+    });
+    const create = jest.fn();
+    const prisma = {
+      organizationMembership: { findFirst },
+      organization: { create },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(prisma, audit, payouts);
+
+    const result = await service.getOrCreatePersonalOrg('user-1', 'Jane Doe');
+
+    expect(result).toEqual({ id: 'org-existing', isPersonal: true });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('creates a new personal organization named after the user when none exists', async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const create = jest
+      .fn()
+      .mockResolvedValue({ id: 'org-new', name: "Jane Doe's Workspace" });
+    const prisma = {
+      organizationMembership: { findFirst },
+      organization: { create },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(prisma, audit, payouts);
+
+    const result = await service.getOrCreatePersonalOrg('user-1', 'Jane Doe');
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "Jane Doe's Workspace",
+          isPersonal: true,
+        }),
+      }),
+    );
+    expect(result).toEqual({ id: 'org-new', name: "Jane Doe's Workspace" });
+  });
+});

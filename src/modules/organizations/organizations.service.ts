@@ -6,7 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
-import { OrgRole } from '../../../generated/prisma/enums';
+import { OrgRole, OrganizationType } from '../../../generated/prisma/enums';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
@@ -35,6 +35,40 @@ export class OrganizationsService {
       userId,
       action: 'ORGANIZATION_CREATED',
       payload: { organizationId: organization.id, name: organization.name },
+    });
+
+    return organization;
+  }
+
+  // Backs the "Quick collection" flow — lets a solo user create an event
+  // without ever seeing an org-creation step. Reuses the same organization on
+  // repeat use rather than spawning a new one every time.
+  async getOrCreatePersonalOrg(userId: string, userName: string) {
+    const existing = await this.prisma.organizationMembership.findFirst({
+      where: { userId, organization: { isPersonal: true } },
+      select: { organization: true },
+    });
+    if (existing) return existing.organization;
+
+    const organization = await this.prisma.organization.create({
+      data: {
+        name: `${userName}'s Workspace`,
+        type: OrganizationType.OTHER,
+        isPersonal: true,
+        memberships: {
+          create: { userId, role: OrgRole.MAIN_ORGANIZER },
+        },
+      },
+    });
+
+    await this.audit.record({
+      userId,
+      action: 'ORGANIZATION_CREATED',
+      payload: {
+        organizationId: organization.id,
+        name: organization.name,
+        isPersonal: true,
+      },
     });
 
     return organization;

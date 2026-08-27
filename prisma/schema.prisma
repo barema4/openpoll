@@ -73,6 +73,11 @@ model Organization {
   id                 String           @id @default(uuid())
   name               String
   type               OrganizationType
+  // Auto-provisioned the first time a user hits "Quick collection" instead of
+  // setting up a real multi-member organization — lets a solo user create an
+  // event/link without an org-creation step, while everything downstream
+  // (RBAC, payouts) still works exactly as it does for a real organization.
+  isPersonal         Boolean          @default(false) @map("is_personal")
   // Set only via the bank-account onboarding flow (PATCH /organizations/:id/payout).
   gatewayWalletId    String?          @map("gateway_wallet_id")
   payoutBankName     String?          @map("payout_bank_name")
