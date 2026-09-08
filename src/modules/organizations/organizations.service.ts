@@ -1,15 +1,29 @@
 import {
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { EmailService } from '../../email/email.service';
 import { PayoutsService } from '../payouts/payouts.service';
-import { OrgRole, OrganizationType } from '../../../generated/prisma/enums';
+import {
+  OrgRole,
+  OrganizationInvitationStatus,
+  OrganizationType,
+} from '../../../generated/prisma/enums';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
+
+const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function hashToken(rawToken: string): string {
+  return createHash('sha256').update(rawToken).digest('hex');
+}
 
 @Injectable()
 export class OrganizationsService {
@@ -17,6 +31,8 @@ export class OrganizationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly payouts: PayoutsService,
+    private readonly config: ConfigService,
+    private readonly email: EmailService,
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto) {
@@ -139,9 +155,7 @@ export class OrganizationsService {
       where: { email: dto.email },
     });
     if (!invitedUser) {
-      throw new NotFoundException(
-        'No account found for this email. The user must register before being added to an organization.',
-      );
+      return this.createInvitation(actingUserId, organizationId, dto);
     }
 
     const existingMembership =
@@ -171,5 +185,72 @@ export class OrganizationsService {
     });
 
     return membership;
+  }
+
+  // No account exists yet for this email — persist a pending invitation and
+  // email a sign-up link instead. Resolved into a real OrganizationMembership
+  // by AuthService.register() if the invited email registers with the token.
+  private async createInvitation(
+    actingUserId: string,
+    organizationId: string,
+    dto: InviteMemberDto,
+  ) {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+
+    const rawToken = randomBytes(32).toString('hex');
+    await this.prisma.organizationInvitation.create({
+      data: {
+        organizationId,
+        email: dto.email,
+        role: dto.role,
+        invitedByUserId: actingUserId,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + INVITATION_EXPIRY_MS),
+      },
+    });
+
+    const baseUrl = this.config
+      .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
+      .replace(/\/$/, '');
+    await this.email.send({
+      to: dto.email,
+      subject: `You're invited to join ${organization.name} on OpenPool`,
+      html: `<p>You've been invited to join <strong>${organization.name}</strong> as
+        ${dto.role}. Create an account to accept (this link expires in 7 days):</p>
+        <p><a href="${baseUrl}/register?invite=${rawToken}">Accept invitation</a></p>`,
+    });
+
+    await this.audit.record({
+      userId: actingUserId,
+      action: 'ORGANIZATION_INVITATION_SENT',
+      payload: { organizationId, invitedEmail: dto.email, role: dto.role },
+    });
+
+    return { status: 'invited' as const, email: dto.email, role: dto.role };
+  }
+
+  async getInvitationPreview(rawToken: string) {
+    const invitation = await this.prisma.organizationInvitation.findUnique({
+      where: { tokenHash: hashToken(rawToken) },
+      include: { organization: { select: { name: true } } },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+    if (invitation.status !== OrganizationInvitationStatus.PENDING) {
+      throw new GoneException('This invitation is no longer valid');
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new GoneException('This invitation has expired');
+    }
+
+    return {
+      organizationName: invitation.organization.name,
+      role: invitation.role,
+      email: invitation.email,
+    };
   }
 }

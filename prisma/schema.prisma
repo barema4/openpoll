@@ -30,9 +30,11 @@ model User {
   payoutAccountLast4 String?  @map("payout_account_last4")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  memberships       OrganizationMembership[]
-  auditLogs         AuditLog[]
-  personalInvoices  PersonalInvoice[]
+  memberships          OrganizationMembership[]
+  auditLogs            AuditLog[]
+  personalInvoices     PersonalInvoice[]
+  passwordResetTokens  PasswordResetToken[]
+  sentInvitations      OrganizationInvitation[]
 
   @@map("users")
 }
@@ -87,6 +89,7 @@ model Organization {
 
   memberships OrganizationMembership[]
   events      Event[]
+  invitations OrganizationInvitation[]
 
   @@map("organizations")
 }
@@ -340,4 +343,51 @@ model AuditLog {
   user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Password reset
+// ---------------------------------------------------------------------------
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Organization invitations — lets a MAIN_ORGANIZER invite someone who doesn't
+// have an account yet. Resolved into a real OrganizationMembership when the
+// invited email completes registration with the token from the invite email.
+// ---------------------------------------------------------------------------
+
+enum OrganizationInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model OrganizationInvitation {
+  id              String                        @id @default(uuid())
+  organizationId  String                        @map("organization_id")
+  email           String
+  role            OrgRole
+  invitedByUserId String                        @map("invited_by_user_id")
+  tokenHash       String                        @unique @map("token_hash")
+  status          OrganizationInvitationStatus  @default(PENDING)
+  expiresAt       DateTime                      @map("expires_at")
+  createdAt       DateTime                      @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("organization_invitations")
 }

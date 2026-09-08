@@ -17,6 +17,7 @@ import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
+import { AuditService } from '../../audit/audit.service';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
 @ApiTags('organizations')
@@ -24,7 +25,10 @@ import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type
 @UseGuards(JwtAuthGuard, OrgRolesGuard)
 @Controller('organizations')
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Post()
   create(
@@ -51,6 +55,12 @@ export class OrganizationsController {
   @Get(':organizationId/members')
   listMembers(@Param('organizationId') organizationId: string) {
     return this.organizationsService.listMembers(organizationId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
+  @Get(':organizationId/audit-log')
+  getAuditLog(@Param('organizationId') organizationId: string) {
+    return this.auditService.findForOrganization(organizationId);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER)

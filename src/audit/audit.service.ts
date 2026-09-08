@@ -21,4 +21,29 @@ export class AuditService {
       },
     });
   }
+
+  // Org-scoped actions (invite/payout on the Organization itself) only carry
+  // `organizationId` inside the JSON payload, never `eventId` — event-scoped
+  // actions carry `eventId`, which resolves to the org via Event.organizationId.
+  // This covers both shapes.
+  findForOrganization(organizationId: string) {
+    return this.prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { event: { organizationId } },
+          {
+            payloadSnapshot: {
+              path: ['organizationId'],
+              equals: organizationId,
+            },
+          },
+        ],
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        event: { select: { id: true, title: true } },
+      },
+      orderBy: { timestamp: 'desc' },
+    });
+  }
 }

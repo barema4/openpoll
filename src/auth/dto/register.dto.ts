@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -11,4 +11,12 @@ export class RegisterDto {
   @IsString()
   @MinLength(1)
   name!: string;
+
+  // Raw token from an organization-invitation email link (?invite=...). If it
+  // resolves to a valid, matching-email pending invitation, registration also
+  // creates the corresponding OrganizationMembership. Never blocks
+  // registration if invalid/stale/mismatched.
+  @IsOptional()
+  @IsString()
+  inviteToken?: string;
 }

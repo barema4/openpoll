@@ -33,6 +33,11 @@ export const envSchema = z.object({
 
   // Allowed CORS origin(s) for the frontend, comma-separated.
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
+
+  // Optional — EmailService logs instead of sending when this is unset, so
+  // dev/test/CI never need a real Resend account to boot.
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().default('OpenPool <onboarding@resend.dev>'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
