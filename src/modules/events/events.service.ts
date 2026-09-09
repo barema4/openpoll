@@ -147,4 +147,20 @@ export class EventsService {
 
     return event;
   }
+
+  async toggleBudgeting(userId: string, eventId: string, enabled: boolean) {
+    const event = await this.prisma.event.update({
+      where: { id: eventId },
+      data: { budgetingEnabled: enabled },
+    });
+
+    await this.audit.record({
+      userId,
+      eventId: event.id,
+      action: 'EVENT_BUDGETING_TOGGLED',
+      payload: { enabled },
+    });
+
+    return event;
+  }
 }

@@ -9,7 +9,6 @@ export class TransactionsService {
   findOne(transactionId: string) {
     return this.prisma.transaction.findUniqueOrThrow({
       where: { id: transactionId },
-      include: { allocations: true },
     });
   }
 

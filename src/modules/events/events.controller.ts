@@ -14,6 +14,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { CreateQuickEventDto } from './dto/create-quick-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { UpdateEventBudgetingDto } from './dto/update-event-budgeting.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
@@ -75,6 +76,16 @@ export class EventsController {
     @Body() dto: UpdateEventStatusDto,
   ) {
     return this.eventsService.updateStatus(user.id, eventId, dto.status);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':eventId/budgeting')
+  toggleBudgeting(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Body() dto: UpdateEventBudgetingDto,
+  ) {
+    return this.eventsService.toggleBudgeting(user.id, eventId, dto.enabled);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)

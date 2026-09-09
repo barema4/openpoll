@@ -35,6 +35,7 @@ model User {
   personalInvoices     PersonalInvoice[]
   passwordResetTokens  PasswordResetToken[]
   sentInvitations      OrganizationInvitation[]
+  allocations          Allocation[]
 
   @@map("users")
 }
@@ -116,6 +117,10 @@ model Event {
   payoutAccountName  String?     @map("payout_account_name")
   payoutAccountLast4 String?     @map("payout_account_last4")
   status             EventStatus @default(DRAFT)
+  // Opt-in — off by default for a simple collection. Turn on for an event
+  // with real line items to fund (e.g. a wedding), which unlocks
+  // BudgetCategory allocation on this event.
+  budgetingEnabled   Boolean     @default(false) @map("budgeting_enabled")
   createdAt          DateTime    @default(now()) @map("created_at")
 
   organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -124,6 +129,7 @@ model Event {
   transactions    Transaction[]
   disbursements   Disbursement[]
   auditLogs       AuditLog[]
+  allocations     Allocation[]
 
   @@map("events")
 }
@@ -150,15 +156,21 @@ model BudgetCategory {
 // Explicit join between a settled Transaction and the BudgetCategory it funds.
 // Not in the original SRS ERD, but required so BudgetCategory.allocatedFunds
 // is always derivable/auditable from real inflows rather than hand-edited.
+// Pool-based, not transaction-based: an event's collected money is one
+// fungible pool, and an allocation just records "this much of that pool went
+// to this category" — not which specific payment it came from. Simpler to
+// use, and matches how a treasurer actually thinks about the money.
 model Allocation {
-  id               String   @id @default(uuid())
-  transactionId    String   @map("transaction_id")
-  budgetCategoryId String   @map("budget_category_id")
-  amount           Decimal  @db.Decimal(14, 2)
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid())
+  eventId           String   @map("event_id")
+  budgetCategoryId  String   @map("budget_category_id")
+  amount            Decimal  @db.Decimal(14, 2)
+  allocatedByUserId String?  @map("allocated_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   budgetCategory BudgetCategory @relation(fields: [budgetCategoryId], references: [id], onDelete: Cascade)
+  allocatedBy    User?          @relation(fields: [allocatedByUserId], references: [id], onDelete: SetNull)
 
   @@map("allocations")
 }
@@ -235,7 +247,6 @@ model Transaction {
 
   invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  allocations Allocation[]
 
   @@map("transactions")
 }

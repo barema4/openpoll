@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -10,7 +11,8 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BudgetCategoriesService } from './budget-categories.service';
 import { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
-import { AllocateTransactionDto } from './dto/allocate-transaction.dto';
+import { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
+import { AllocateBudgetDto } from './dto/allocate-budget.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -42,6 +44,15 @@ export class BudgetCategoriesController {
     return this.budgetCategoriesService.findOne(budgetCategoryId);
   }
 
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':budgetCategoryId')
+  update(
+    @Param('budgetCategoryId') budgetCategoryId: string,
+    @Body() dto: UpdateBudgetCategoryDto,
+  ) {
+    return this.budgetCategoriesService.update(budgetCategoryId, dto);
+  }
+
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get()
   listForEvent(@Query('eventId') eventId: string) {
@@ -53,7 +64,7 @@ export class BudgetCategoriesController {
   allocate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('budgetCategoryId') budgetCategoryId: string,
-    @Body() dto: AllocateTransactionDto,
+    @Body() dto: AllocateBudgetDto,
   ) {
     return this.budgetCategoriesService.allocate(
       user.id,
