@@ -3,6 +3,14 @@ import type {
   TransactionStatus,
 } from '../../../../generated/prisma/enums';
 
+// The channels a payer can be offered at Paystack's hosted checkout. When the
+// payer has already picked one on our own pay page (for clarity — "Pay with
+// card" vs "Pay with M-Pesa" as distinct actions, rather than a single
+// generic button), we pass just that one through so Paystack skips straight
+// to it instead of showing a channel picker of its own.
+export const PAYMENT_METHODS = ['card', 'mobile_money'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
 export interface InitializeChargeParams {
   email: string;
   /** Major currency units, e.g. 500.00 for KES 500. */
@@ -12,6 +20,8 @@ export interface InitializeChargeParams {
   metadata?: Record<string, unknown>;
   /** Where the payer's browser returns to after paying. */
   callbackUrl?: string;
+  /** Restricts the hosted checkout to just this channel. Omit to let Paystack offer everything enabled for the account. */
+  channels?: PaymentMethod[];
 }
 
 export interface InitializeChargeResult {

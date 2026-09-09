@@ -73,6 +73,7 @@ export class PaymentsService {
       subaccountCode: subaccountCode ?? undefined,
       metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
       callbackUrl: `${checkoutBaseUrl}/receipt`,
+      channels: dto.paymentMethod ? [dto.paymentMethod] : undefined,
     });
 
     return result;

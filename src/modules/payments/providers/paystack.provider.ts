@@ -94,6 +94,7 @@ export class PaystackProvider implements PaymentProvider {
           subaccount: params.subaccountCode,
           metadata: params.metadata,
           callback_url: params.callbackUrl,
+          channels: params.channels,
         }),
       },
     );

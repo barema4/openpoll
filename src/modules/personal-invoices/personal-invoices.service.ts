@@ -156,6 +156,7 @@ export class PersonalInvoicesService {
       subaccountCode: invoice.issuer.gatewayWalletId ?? undefined,
       metadata: { personalInvoiceId: invoice.id },
       callbackUrl: `${checkoutBaseUrl}/i/${token}`,
+      channels: dto.paymentMethod ? [dto.paymentMethod] : undefined,
     });
 
     await this.audit.record({
