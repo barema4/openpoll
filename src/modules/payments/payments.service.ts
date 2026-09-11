@@ -1,17 +1,20 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Prisma } from '../../../generated/prisma/client';
-import { InvoiceStatus } from '../../../generated/prisma/enums';
 import {
-  PAYMENT_PROVIDER,
-  type PaymentProvider,
+  InvoiceStatus,
+  OrganizationCountry,
+} from '../../../generated/prisma/enums';
+import { PaymentProviderRegistry } from './providers/payment-provider.registry';
+import {
+  MOBILE_MONEY_PROVIDERS,
+  type MobileMoneyProvider,
 } from './providers/payment-provider.interface';
 import type { InitiateCheckoutDto } from './dto/initiate-checkout.dto';
 
@@ -19,7 +22,7 @@ import type { InitiateCheckoutDto } from './dto/initiate-checkout.dto';
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly providers: PaymentProviderRegistry,
     private readonly config: ConfigService,
   ) {}
 
@@ -57,26 +60,50 @@ export class PaymentsService {
 
     await this.captureContributorIdentity(invoice, dto);
 
-    const subaccountCode =
-      invoice.event.gatewayWalletId ??
-      invoice.event.organization?.gatewayWalletId;
-    const reference = `op_${randomBytes(12).toString('hex')}`;
+    const reference = randomUUID();
+    const country =
+      invoice.event.organization?.country ?? OrganizationCountry.KENYA;
+    const provider = this.providers.forCountry(country);
 
     const checkoutBaseUrl = this.config
       .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
       .replace(/\/$/, '');
 
-    const result = await this.provider.initializeCharge({
+    if (country === OrganizationCountry.UGANDA) {
+      if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
+        throw new BadRequestException(
+          'A phone number and network (MTN or Airtel) are required to pay this Uganda event',
+        );
+      }
+      return provider.initializeCharge({
+        email: dto.email,
+        amount,
+        reference,
+        currency: 'UGX',
+        metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
+        mobileMoney: {
+          phoneNumber: dto.phoneNumber,
+          provider: dto.paymentMethod,
+        },
+      });
+    }
+
+    const subaccountCode =
+      invoice.event.gatewayWalletId ??
+      invoice.event.organization?.gatewayWalletId;
+
+    return provider.initializeCharge({
       email: dto.email,
       amount,
       reference,
       subaccountCode: subaccountCode ?? undefined,
       metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
       callbackUrl: `${checkoutBaseUrl}/receipt`,
-      channels: dto.paymentMethod ? [dto.paymentMethod] : undefined,
+      channels:
+        dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)
+          ? [dto.paymentMethod]
+          : undefined,
     });
-
-    return result;
   }
 
   // Single-use invoices carry a fixed amountRequested and accept repeated
@@ -144,4 +171,10 @@ export class PaymentsService {
     }
     return amount;
   }
+}
+
+function isMobileMoneyProvider(
+  value: string | undefined,
+): value is MobileMoneyProvider {
+  return (MOBILE_MONEY_PROVIDERS as readonly string[]).includes(value ?? '');
 }

@@ -61,6 +61,7 @@ export class EventsService {
     const organization = await this.organizations.getOrCreatePersonalOrg(
       userId,
       user.name,
+      dto.country,
     );
 
     return this.create(userId, {
@@ -75,7 +76,10 @@ export class EventsService {
   findOne(eventId: string) {
     return this.prisma.event.findUniqueOrThrow({
       where: { id: eventId },
-      include: { budgetCategories: true },
+      include: {
+        budgetCategories: true,
+        organization: { select: { country: true } },
+      },
     });
   }
 

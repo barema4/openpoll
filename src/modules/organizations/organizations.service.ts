@@ -12,12 +12,26 @@ import { EmailService } from '../../email/email.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import {
   OrgRole,
+  OrganizationCountry,
   OrganizationInvitationStatus,
   OrganizationType,
 } from '../../../generated/prisma/enums';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
+import type { SetMobileMoneyPayoutDto } from './dto/set-mobile-money-payout.dto';
+
+// The full phone number is kept server-side (PawaPay needs it on every
+// payout — there's no subaccount-style opaque token like Paystack's), but
+// never returned to the client, matching the payoutAccountLast4 convention
+// already used for bank payouts.
+function maskPhone(organization: { payoutMobileNumber: string | null }) {
+  const { payoutMobileNumber, ...rest } = organization;
+  return {
+    ...rest,
+    payoutMobileNumberLast4: payoutMobileNumber?.slice(-4) ?? null,
+  };
+}
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -40,6 +54,7 @@ export class OrganizationsService {
       data: {
         name: dto.name,
         type: dto.type,
+        country: dto.country ?? OrganizationCountry.KENYA,
         memberships: {
           create: { userId, role: OrgRole.MAIN_ORGANIZER },
         },
@@ -53,23 +68,35 @@ export class OrganizationsService {
       payload: { organizationId: organization.id, name: organization.name },
     });
 
-    return organization;
+    return maskPhone(organization);
   }
 
   // Backs the "Quick collection" flow — lets a solo user create an event
   // without ever seeing an org-creation step. Reuses the same organization on
-  // repeat use rather than spawning a new one every time.
-  async getOrCreatePersonalOrg(userId: string, userName: string) {
+  // repeat use rather than spawning a new one every time — scoped per
+  // country, since a personal org's country/payment provider is fixed once
+  // created (same rule as a regular organization): quick-collecting for
+  // Uganda after already having a Kenya personal org creates a second one,
+  // it never silently reuses the wrong-country org.
+  async getOrCreatePersonalOrg(
+    userId: string,
+    userName: string,
+    country: OrganizationCountry = OrganizationCountry.KENYA,
+  ) {
     const existing = await this.prisma.organizationMembership.findFirst({
-      where: { userId, organization: { isPersonal: true } },
+      where: { userId, organization: { isPersonal: true, country } },
       select: { organization: true },
     });
     if (existing) return existing.organization;
 
     const organization = await this.prisma.organization.create({
       data: {
-        name: `${userName}'s Workspace`,
+        name:
+          country === OrganizationCountry.UGANDA
+            ? `${userName}'s Workspace (Uganda)`
+            : `${userName}'s Workspace`,
         type: OrganizationType.OTHER,
+        country,
         isPersonal: true,
         memberships: {
           create: { userId, role: OrgRole.MAIN_ORGANIZER },
@@ -114,13 +141,47 @@ export class OrganizationsService {
       payload: { organizationId, bankName: dto.bankName },
     });
 
-    return updated;
+    return maskPhone(updated);
+  }
+
+  // Uganda/PawaPay orgs only — there's no bank-style resolve/subaccount step
+  // to call out to, so this is pure local validation + storage.
+  async setMobileMoneyPayout(
+    userId: string,
+    organizationId: string,
+    dto: SetMobileMoneyPayoutDto,
+  ) {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { country: true },
+    });
+    if (organization.country !== OrganizationCountry.UGANDA) {
+      throw new ForbiddenException(
+        'Mobile money payouts are only available for Uganda organizations',
+      );
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        payoutMobileProvider: dto.provider,
+        payoutMobileNumber: dto.phoneNumber,
+      },
+    });
+
+    await this.audit.record({
+      userId,
+      action: 'ORGANIZATION_MOBILE_MONEY_PAYOUT_SET',
+      payload: { organizationId, provider: dto.provider },
+    });
+
+    return maskPhone(updated);
   }
 
   findOne(organizationId: string) {
-    return this.prisma.organization.findUniqueOrThrow({
-      where: { id: organizationId },
-    });
+    return this.prisma.organization
+      .findUniqueOrThrow({ where: { id: organizationId } })
+      .then(maskPhone);
   }
 
   // Self-scoped (not org-scoped) — how a freshly logged-in user discovers
@@ -134,7 +195,7 @@ export class OrganizationsService {
     });
 
     return memberships.map((membership) => ({
-      ...membership.organization,
+      ...maskPhone(membership.organization),
       role: membership.role,
     }));
   }

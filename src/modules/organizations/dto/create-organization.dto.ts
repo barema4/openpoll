@@ -1,5 +1,8 @@
-import { IsEnum, IsString, MinLength } from 'class-validator';
-import { OrganizationType } from '../../../../generated/prisma/enums';
+import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  OrganizationCountry,
+  OrganizationType,
+} from '../../../../generated/prisma/enums';
 
 export class CreateOrganizationDto {
   @IsString()
@@ -8,4 +11,10 @@ export class CreateOrganizationDto {
 
   @IsEnum(OrganizationType)
   type!: OrganizationType;
+
+  // Determines the payment provider/currency for every event this org
+  // creates. Defaults to Kenya/Paystack if omitted.
+  @IsOptional()
+  @IsEnum(OrganizationCountry)
+  country?: OrganizationCountry;
 }

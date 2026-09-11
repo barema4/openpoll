@@ -1,5 +1,5 @@
 import { OrganizationsService } from './organizations.service';
-import { OrgRole } from '../../../generated/prisma/enums';
+import { OrgRole, OrganizationCountry } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PayoutsService } from '../payouts/payouts.service';
@@ -43,12 +43,14 @@ describe('OrganizationsService.listForUser', () => {
         name: 'Grace Chapel',
         type: 'CHURCH',
         role: OrgRole.MAIN_ORGANIZER,
+        payoutMobileNumberLast4: null,
       },
       {
         id: 'org-2',
         name: 'Family Chama',
         type: 'CHAMA',
         role: OrgRole.AUDITOR,
+        payoutMobileNumberLast4: null,
       },
     ]);
     expect(findMany).toHaveBeenCalledWith(
@@ -129,6 +131,55 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
       }),
     );
     expect(result).toEqual({ id: 'org-new', name: "Jane Doe's Workspace" });
+  });
+
+  it('scopes the lookup by country, so an existing Kenya personal org is not reused for a Uganda quick collection', async () => {
+    const findFirst = jest.fn().mockResolvedValue(null); // no Uganda personal org exists yet
+    const create = jest.fn().mockResolvedValue({
+      id: 'org-ug',
+      name: "Jane Doe's Workspace (Uganda)",
+      country: 'UGANDA',
+    });
+    const prisma = {
+      organizationMembership: { findFirst },
+      organization: { create },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.getOrCreatePersonalOrg(
+      'user-1',
+      'Jane Doe',
+      OrganizationCountry.UGANDA,
+    );
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 'user-1',
+          organization: { isPersonal: true, country: 'UGANDA' },
+        },
+      }),
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "Jane Doe's Workspace (Uganda)",
+          country: 'UGANDA',
+          isPersonal: true,
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      id: 'org-ug',
+      name: "Jane Doe's Workspace (Uganda)",
+      country: 'UGANDA',
+    });
   });
 });
 
@@ -289,6 +340,74 @@ describe('OrganizationsService.getInvitationPreview', () => {
       organizationName: 'Grace Chapel',
       role: OrgRole.TREASURER,
       email: 'jane@example.com',
+    });
+  });
+});
+
+describe('OrganizationsService.setMobileMoneyPayout', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
+  const config = {} as unknown as ConfigService;
+  const email = { send: jest.fn() } as unknown as EmailService;
+
+  it('rejects a Kenya organization', async () => {
+    const prisma = {
+      organization: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KENYA' }),
+      },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    await expect(
+      service.setMobileMoneyPayout('user-1', 'org-1', {
+        provider: 'MTN_MOMO_UGA',
+        phoneNumber: '256771234567',
+      }),
+    ).rejects.toThrow(/only available for Uganda/i);
+  });
+
+  it('stores the provider/number and masks the number to last 4 in the response', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'org-1',
+      payoutMobileNumber: '256771234567',
+    });
+    const prisma = {
+      organization: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UGANDA' }),
+        update,
+      },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.setMobileMoneyPayout('user-1', 'org-1', {
+      provider: 'MTN_MOMO_UGA',
+      phoneNumber: '256771234567',
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          payoutMobileProvider: 'MTN_MOMO_UGA',
+          payoutMobileNumber: '256771234567',
+        },
+      }),
+    );
+    expect(result).not.toHaveProperty('payoutMobileNumber');
+    expect(result).toMatchObject({
+      id: 'org-1',
+      payoutMobileNumberLast4: '4567',
     });
   });
 });

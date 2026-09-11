@@ -1,5 +1,5 @@
 import { PayoutsService } from './payouts.service';
-import type { PaymentProvider } from '../payments/providers/payment-provider.interface';
+import type { BankPayoutProvider } from '../payments/providers/payment-provider.interface';
 
 describe('PayoutsService.onboard', () => {
   it('resolves the account, creates a subaccount, and returns display-friendly fields', async () => {
@@ -13,7 +13,7 @@ describe('PayoutsService.onboard', () => {
     const provider = {
       resolveAccountNumber,
       createSubaccount,
-    } as unknown as PaymentProvider;
+    } as unknown as BankPayoutProvider;
     const service = new PayoutsService(provider);
 
     const result = await service.onboard({
@@ -47,7 +47,7 @@ describe('PayoutsService.onboard', () => {
     const provider = {
       resolveAccountNumber,
       createSubaccount,
-    } as unknown as PaymentProvider;
+    } as unknown as BankPayoutProvider;
     const service = new PayoutsService(provider);
 
     await expect(

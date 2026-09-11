@@ -9,7 +9,7 @@ import {
 } from '../../../generated/prisma/enums';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from './personal-invoices.constants';
 import {
-  PAYMENT_PROVIDER,
+  PAYSTACK_PROVIDER,
   type PaymentProvider,
 } from '../payments/providers/payment-provider.interface';
 import type { ParsedWebhookEvent } from '../payments/providers/payment-provider.interface';
@@ -23,7 +23,7 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    @Inject(PAYSTACK_PROVIDER) private readonly provider: PaymentProvider,
   ) {
     super();
   }

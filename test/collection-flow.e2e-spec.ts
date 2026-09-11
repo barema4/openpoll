@@ -5,7 +5,7 @@ import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
-import { PAYMENT_PROVIDER } from '../src/modules/payments/providers/payment-provider.interface';
+import { PAYSTACK_PROVIDER } from '../src/modules/payments/providers/payment-provider.interface';
 import { TransactionStatus } from '../generated/prisma/enums';
 import { FakePaymentProvider } from './fakes/fake-payment-provider';
 
@@ -35,7 +35,7 @@ describe('Collection flow (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(PAYMENT_PROVIDER)
+      .overrideProvider(PAYSTACK_PROVIDER)
       .useFactory({
         factory: (config: ConfigService) => new FakePaymentProvider(config),
         inject: [ConfigService],
@@ -48,7 +48,7 @@ describe('Collection flow (e2e)', () => {
     );
     await app.init();
 
-    fakeProvider = moduleFixture.get(PAYMENT_PROVIDER);
+    fakeProvider = moduleFixture.get(PAYSTACK_PROVIDER);
   });
 
   afterAll(async () => {
@@ -232,7 +232,7 @@ describe('Partial payments (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(PAYMENT_PROVIDER)
+      .overrideProvider(PAYSTACK_PROVIDER)
       .useFactory({
         factory: (config: ConfigService) => new FakePaymentProvider(config),
         inject: [ConfigService],
@@ -245,7 +245,7 @@ describe('Partial payments (e2e)', () => {
     );
     await app.init();
 
-    fakeProvider = moduleFixture.get(PAYMENT_PROVIDER);
+    fakeProvider = moduleFixture.get(PAYSTACK_PROVIDER);
 
     const reg = await request(app.getHttpServer())
       .post('/auth/register')

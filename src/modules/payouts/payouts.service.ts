@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  PAYMENT_PROVIDER,
-  type PaymentProvider,
+  PAYSTACK_PROVIDER,
+  type BankPayoutProvider,
 } from '../payments/providers/payment-provider.interface';
 
 export interface PayoutDetails {
@@ -14,7 +14,7 @@ export interface PayoutDetails {
 @Injectable()
 export class PayoutsService {
   constructor(
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    @Inject(PAYSTACK_PROVIDER) private readonly provider: BankPayoutProvider,
   ) {}
 
   listBanks() {

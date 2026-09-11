@@ -16,7 +16,14 @@ import type { CreatePledgeDto } from './dto/create-pledge.dto';
 const DEFAULT_EXPIRY_DAYS = 30;
 
 const INVOICE_PUBLIC_INCLUDE = {
-  event: { select: { id: true, title: true, isPermanent: true } },
+  event: {
+    select: {
+      id: true,
+      title: true,
+      isPermanent: true,
+      organization: { select: { country: true } },
+    },
+  },
 } as const;
 
 interface PersistInvoiceParams {

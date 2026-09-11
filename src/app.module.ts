@@ -19,6 +19,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { PersonalInvoicesModule } from './modules/personal-invoices/personal-invoices.module';
 import { UsersModule } from './modules/users/users.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
+import { WithdrawalsModule } from './modules/withdrawals/withdrawals.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { PayoutsModule } from './modules/payouts/payouts.module';
     PersonalInvoicesModule,
     UsersModule,
     PayoutsModule,
+    WithdrawalsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

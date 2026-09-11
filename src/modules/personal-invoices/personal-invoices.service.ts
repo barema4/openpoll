@@ -10,7 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
 import {
-  PAYMENT_PROVIDER,
+  PAYSTACK_PROVIDER,
   type PaymentProvider,
 } from '../payments/providers/payment-provider.interface';
 import { buildPersonalInvoiceShareLinks } from './share-links.util';
@@ -29,7 +29,7 @@ export class PersonalInvoicesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    @Inject(PAYSTACK_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
   async create(userId: string, dto: CreatePersonalInvoiceDto) {

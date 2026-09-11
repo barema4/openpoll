@@ -4,7 +4,6 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
-  Inject,
   Post,
   Req,
 } from '@nestjs/common';
@@ -13,22 +12,22 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import type { Request } from 'express';
-import {
-  PAYMENT_PROVIDER,
-  type PaymentProvider,
-} from './providers/payment-provider.interface';
+import { PaystackProvider } from './providers/paystack.provider';
 import { WEBHOOK_QUEUE } from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 
-// Paystack webhook. Signature is verified against the raw request body before
-// anything is trusted; the actual business logic (transaction upsert, invoice
-// status update) runs asynchronously via BullMQ so retries/backoff (NFR-02)
-// don't block the HTTP response Paystack expects within a few seconds.
+// Paystack webhook (Kenya only — Uganda/PawaPay has its own controller, see
+// pawapay-webhook.controller.ts, since the signature scheme and payload
+// shape are completely different). Signature is verified against the raw
+// request body before anything is trusted; the actual business logic
+// (transaction upsert, invoice status update) runs asynchronously via
+// BullMQ so retries/backoff don't block the HTTP response Paystack expects
+// within a few seconds.
 @ApiTags('payments')
 @Controller('payments/webhooks')
 export class WebhookController {
   constructor(
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly provider: PaystackProvider,
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
     @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
     private readonly personalInvoiceWebhookQueue: Queue,

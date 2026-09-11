@@ -1,17 +1,15 @@
-import { Inject, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import {
   InvoiceStatus,
+  OrganizationCountry,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import { WEBHOOK_QUEUE } from './payments.constants';
-import {
-  PAYMENT_PROVIDER,
-  type PaymentProvider,
-} from './providers/payment-provider.interface';
+import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from './providers/payment-provider.interface';
 
 const AMOUNT_TOLERANCE = 0.01;
@@ -23,7 +21,7 @@ export class WebhookProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly providers: PaymentProviderRegistry,
   ) {
     super();
   }
@@ -52,12 +50,14 @@ export class WebhookProcessor extends WorkerHost {
     }
 
     // Defense-in-depth: a webhook signature check proves the payload came
-    // from Paystack, but not that its body wasn't manipulated upstream of
+    // from the gateway, but not that its body wasn't manipulated upstream of
     // signing, nor guards against a bug in that check. Before crediting
-    // anything, independently confirm status + amount directly with Paystack.
+    // anything, independently confirm status + amount directly with whichever
+    // provider (Paystack/Kenya or PawaPay/Uganda) this event's organization uses.
     let amountSettled = event.amountSettled;
     if (event.status === TransactionStatus.SUCCESS) {
-      const verified = await this.provider.verifyTransaction(
+      const provider = await this.resolveProviderForEvent(eventId);
+      const verified = await provider.verifyTransaction(
         event.providerReference,
       );
       if (verified.status !== TransactionStatus.SUCCESS) {
@@ -142,5 +142,18 @@ export class WebhookProcessor extends WorkerHost {
       select: { eventId: true },
     });
     return invoice?.eventId ?? null;
+  }
+
+  private async resolveProviderForEvent(eventId: string) {
+    const event = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+      select: { organization: { select: { country: true } } },
+    });
+    // No organization (deleted/orphaned) defaults to the registry's fallback
+    // (Kenya) — should never happen in practice since events always start
+    // with an organization.
+    return this.providers.forCountry(
+      event.organization?.country ?? OrganizationCountry.KENYA,
+    );
   }
 }

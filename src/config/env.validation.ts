@@ -38,6 +38,19 @@ export const envSchema = z.object({
   // dev/test/CI never need a real Resend account to boot.
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('OpenPool <onboarding@resend.dev>'),
+
+  // Uganda mobile money (MTN/Airtel), via PawaPay. Optional/defaulted so
+  // .env.test and CI never need real PawaPay credentials — only Uganda-country
+  // orgs ever exercise this provider.
+  PAWAPAY_API_TOKEN: z.string().optional(),
+  PAWAPAY_BASE_URL: z
+    .string()
+    .url()
+    .default('https://api.sandbox.pawapay.io/v2'),
+  // PawaPay's current ECDSA P-256 public key (PEM), for verifying webhook
+  // signatures. Copy the current key from the PawaPay dashboard/docs — see
+  // the TODO in pawapay.provider.ts about upgrading to live fetch-by-keyid.
+  PAWAPAY_PUBLIC_KEY: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

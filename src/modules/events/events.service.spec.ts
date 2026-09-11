@@ -74,7 +74,11 @@ describe('EventsService.createQuick', () => {
 
     await service.createQuick('user-1', { title: 'Quick Fund' });
 
-    expect(getOrCreatePersonalOrg).toHaveBeenCalledWith('user-1', 'Jane Doe');
+    expect(getOrCreatePersonalOrg).toHaveBeenCalledWith(
+      'user-1',
+      'Jane Doe',
+      undefined,
+    );
     expect(eventCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

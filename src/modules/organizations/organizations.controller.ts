@@ -12,6 +12,7 @@ import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
+import { SetMobileMoneyPayoutDto } from './dto/set-mobile-money-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -81,5 +82,19 @@ export class OrganizationsController {
     @Body() dto: SetPayoutDto,
   ) {
     return this.organizationsService.setPayout(user.id, organizationId, dto);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER)
+  @Patch(':organizationId/payout-mobile-money')
+  setMobileMoneyPayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('organizationId') organizationId: string,
+    @Body() dto: SetMobileMoneyPayoutDto,
+  ) {
+    return this.organizationsService.setMobileMoneyPayout(
+      user.id,
+      organizationId,
+      dto,
+    );
   }
 }

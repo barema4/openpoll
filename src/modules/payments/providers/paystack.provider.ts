@@ -7,6 +7,7 @@ import {
 } from '../../../../generated/prisma/enums';
 import type {
   Bank,
+  BankPayoutProvider,
   CreateSubaccountParams,
   InitializeChargeParams,
   InitializeChargeResult,
@@ -73,7 +74,7 @@ interface PaystackWebhookPayload {
 }
 
 @Injectable()
-export class PaystackProvider implements PaymentProvider {
+export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
   constructor(private readonly config: ConfigService) {}
 
   async initializeCharge(
@@ -107,6 +108,7 @@ export class PaystackProvider implements PaymentProvider {
     }
 
     return {
+      status: 'redirect',
       authorizationUrl: body.data.authorization_url,
       accessCode: body.data.access_code,
       reference: body.data.reference,

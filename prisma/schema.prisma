@@ -36,6 +36,7 @@ model User {
   passwordResetTokens  PasswordResetToken[]
   sentInvitations      OrganizationInvitation[]
   allocations          Allocation[]
+  requestedWithdrawals Withdrawal[]
 
   @@map("users")
 }
@@ -72,25 +73,42 @@ enum OrganizationType {
   OTHER
 }
 
+enum OrganizationCountry {
+  KENYA
+  UGANDA
+}
+
 model Organization {
-  id                 String           @id @default(uuid())
+  id                 String              @id @default(uuid())
   name               String
   type               OrganizationType
+  // Determines which payment provider/currency this org's events use: KENYA →
+  // Paystack (card + M-Pesa, KES). UGANDA → PawaPay (MTN/Airtel mobile money
+  // only, UGX) — see PaymentProviderRegistry.
+  country            OrganizationCountry @default(KENYA)
   // Auto-provisioned the first time a user hits "Quick collection" instead of
   // setting up a real multi-member organization — lets a solo user create an
   // event/link without an org-creation step, while everything downstream
   // (RBAC, payouts) still works exactly as it does for a real organization.
-  isPersonal         Boolean          @default(false) @map("is_personal")
-  // Set only via the bank-account onboarding flow (PATCH /organizations/:id/payout).
-  gatewayWalletId    String?          @map("gateway_wallet_id")
-  payoutBankName     String?          @map("payout_bank_name")
-  payoutAccountName  String?          @map("payout_account_name")
-  payoutAccountLast4 String?          @map("payout_account_last4")
-  createdAt          DateTime         @default(now()) @map("created_at")
+  isPersonal         Boolean             @default(false) @map("is_personal")
+  // Kenya/Paystack payout destination. Set only via the bank-account onboarding
+  // flow (PATCH /organizations/:id/payout).
+  gatewayWalletId    String?             @map("gateway_wallet_id")
+  payoutBankName     String?             @map("payout_bank_name")
+  payoutAccountName  String?             @map("payout_account_name")
+  payoutAccountLast4 String?             @map("payout_account_last4")
+  // Uganda/PawaPay payout destination. PawaPay has no subaccount-style opaque
+  // token — the raw number must be kept to place a withdrawal payout later.
+  // Set only via PATCH /organizations/:id/payout-mobile-money; always masked
+  // to the last 4 digits in API responses.
+  payoutMobileProvider String?           @map("payout_mobile_provider")
+  payoutMobileNumber   String?           @map("payout_mobile_number")
+  createdAt          DateTime            @default(now()) @map("created_at")
 
   memberships OrganizationMembership[]
   events      Event[]
   invitations OrganizationInvitation[]
+  withdrawals Withdrawal[]
 
   @@map("organizations")
 }
@@ -401,4 +419,35 @@ model OrganizationInvitation {
   invitedBy    User         @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
 
   @@map("organization_invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Withdrawals — cashing out a Uganda/PawaPay organization's accumulated
+// balance. PawaPay has no charge-time routing (unlike Paystack subaccounts),
+// so contributions collect in the platform's own PawaPay balance and a
+// treasurer explicitly withdraws when ready.
+// ---------------------------------------------------------------------------
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Withdrawal {
+  id                String           @id @default(uuid())
+  organizationId    String           @map("organization_id")
+  amount            Decimal          @db.Decimal(14, 2)
+  status            WithdrawalStatus @default(PENDING)
+  providerReference String?          @unique @map("provider_reference")
+  requestedByUserId String           @map("requested_by_user_id")
+  failureReason     String?          @map("failure_reason")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  completedAt       DateTime?        @map("completed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User         @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("withdrawals")
 }
