@@ -12,7 +12,7 @@ import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
-import { SetMobileMoneyPayoutDto } from './dto/set-mobile-money-payout.dto';
+import { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';

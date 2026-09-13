@@ -4,6 +4,9 @@ import {
   type MobileMoneyProvider,
 } from '../../payments/providers/payment-provider.interface';
 
+// Shared by both User (personal invoices) and Organization payout onboarding
+// — Uganda/PawaPay mobile money has the same shape regardless of who owns
+// the payout destination.
 export class SetMobileMoneyPayoutDto {
   @IsIn(MOBILE_MONEY_PROVIDERS)
   provider!: MobileMoneyProvider;

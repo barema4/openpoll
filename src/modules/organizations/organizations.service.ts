@@ -19,19 +19,8 @@ import {
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
-import type { SetMobileMoneyPayoutDto } from './dto/set-mobile-money-payout.dto';
-
-// The full phone number is kept server-side (PawaPay needs it on every
-// payout — there's no subaccount-style opaque token like Paystack's), but
-// never returned to the client, matching the payoutAccountLast4 convention
-// already used for bank payouts.
-function maskPhone(organization: { payoutMobileNumber: string | null }) {
-  const { payoutMobileNumber, ...rest } = organization;
-  return {
-    ...rest,
-    payoutMobileNumberLast4: payoutMobileNumber?.slice(-4) ?? null,
-  };
-}
+import type { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
+import { maskPhone } from '../payouts/mask-phone.util';
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
