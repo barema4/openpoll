@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import type { Prisma } from '../../../generated/prisma/client';
 import {
   OrganizationCountry,
   PersonalInvoiceStatus,
@@ -16,6 +17,7 @@ import {
   MOBILE_MONEY_PROVIDERS,
   type MobileMoneyProvider,
 } from '../payments/providers/payment-provider.interface';
+import { calculatePlatformFee } from '../payments/platform-fee.util';
 import { buildPersonalInvoiceShareLinks } from './share-links.util';
 import type { CreatePersonalInvoiceDto } from './dto/create-personal-invoice.dto';
 import type { InitiatePersonalInvoiceCheckoutDto } from './dto/initiate-personal-invoice-checkout.dto';
@@ -118,14 +120,39 @@ export class PersonalInvoicesService {
 
     const isOpen = invoice.status === PersonalInvoiceStatus.PENDING;
     if (invoice.expiresAt && invoice.expiresAt < new Date() && isOpen) {
-      return this.prisma.personalInvoice.update({
+      const expired = await this.prisma.personalInvoice.update({
         where: { id: invoice.id },
         data: { status: PersonalInvoiceStatus.EXPIRED },
         include: PUBLIC_INCLUDE,
       });
+      return this.withFeeBreakdown(expired);
     }
 
-    return invoice;
+    return this.withFeeBreakdown(invoice);
+  }
+
+  // Precomputed here (rather than left to the frontend) since a personal
+  // invoice's amount is always fixed — no need to trust/duplicate the fee
+  // formula client-side when the backend already knows the exact number.
+  private withFeeBreakdown<T extends { amount: Prisma.Decimal }>(
+    invoice: T,
+  ): T & {
+    platformFeePercent: number;
+    platformFeeAmount: number;
+    totalChargeAmount: number;
+  } {
+    const platformFeePercent =
+      this.config.get<number>('PLATFORM_FEE_PERCENT') ?? 0;
+    const platformFeeAmount = calculatePlatformFee(
+      Number(invoice.amount),
+      platformFeePercent,
+    );
+    return {
+      ...invoice,
+      platformFeePercent,
+      platformFeeAmount,
+      totalChargeAmount: Number(invoice.amount) + platformFeeAmount,
+    };
   }
 
   async initializeCheckout(
@@ -166,6 +193,18 @@ export class PersonalInvoicesService {
     const provider = this.providers.forCountry(invoice.issuer.country);
     let result;
 
+    // Charged additively on top of the invoice's amount — the issuer is
+    // still credited exactly that amount, never amount + fee. See
+    // PersonalInvoiceWebhookProcessor, which subtracts this back out.
+    const platformFeePercent =
+      this.config.get<number>('PLATFORM_FEE_PERCENT') ?? 0;
+    const platformFeeAmount = calculatePlatformFee(
+      Number(invoice.amount),
+      platformFeePercent,
+    );
+    const grossAmount = Number(invoice.amount) + platformFeeAmount;
+    const metadata = { personalInvoiceId: invoice.id, platformFeeAmount };
+
     if (invoice.issuer.country === OrganizationCountry.UGANDA) {
       if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
         throw new BadRequestException(
@@ -174,10 +213,10 @@ export class PersonalInvoicesService {
       }
       result = await provider.initializeCharge({
         email: dto.payerEmail,
-        amount: Number(invoice.amount),
+        amount: grossAmount,
         reference,
         currency: 'UGX',
-        metadata: { personalInvoiceId: invoice.id },
+        metadata,
         mobileMoney: {
           phoneNumber: dto.phoneNumber,
           provider: dto.paymentMethod,
@@ -190,10 +229,11 @@ export class PersonalInvoicesService {
 
       result = await provider.initializeCharge({
         email: dto.payerEmail,
-        amount: Number(invoice.amount),
+        amount: grossAmount,
         reference,
         subaccountCode: invoice.issuer.gatewayWalletId ?? undefined,
-        metadata: { personalInvoiceId: invoice.id },
+        platformFeeAmount,
+        metadata,
         callbackUrl: `${checkoutBaseUrl}/i/${token}`,
         channels:
           dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)

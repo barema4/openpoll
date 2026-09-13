@@ -195,6 +195,9 @@ export class PawaPayProvider implements PaymentProvider {
       invoiceId: metadata.invoiceId,
       eventId: metadata.eventId,
       personalInvoiceId: metadata.personalInvoiceId,
+      platformFeeAmount: metadata.platformFeeAmount
+        ? Number(metadata.platformFeeAmount)
+        : undefined,
     };
   }
 

@@ -69,6 +69,7 @@ interface PaystackWebhookPayload {
       invoiceId?: string;
       eventId?: string;
       personalInvoiceId?: string;
+      platformFeeAmount?: string;
     };
   };
 }
@@ -93,6 +94,14 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
           amount: Math.round(params.amount * 100), // kobo/cents
           reference: params.reference,
           subaccount: params.subaccountCode,
+          // Sweeps the platform's fee to the main account instead of the
+          // subaccount — only meaningful when there's a subaccount to split
+          // with; otherwise the whole charge already lands on the main
+          // account and there's nothing to carve out.
+          transaction_charge:
+            params.subaccountCode && params.platformFeeAmount
+              ? Math.round(params.platformFeeAmount * 100)
+              : undefined,
           metadata: params.metadata,
           callback_url: params.callbackUrl,
           channels: params.channels,
@@ -249,6 +258,9 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
       invoiceId: metadata.invoiceId,
       eventId: metadata.eventId,
       personalInvoiceId: metadata.personalInvoiceId,
+      platformFeeAmount: metadata.platformFeeAmount
+        ? Number(metadata.platformFeeAmount)
+        : undefined,
     };
   }
 }

@@ -9,7 +9,9 @@ import type { PaymentProviderRegistry } from '../payments/providers/payment-prov
 const auditRecord = jest.fn();
 const audit = { record: auditRecord } as unknown as AuditService;
 const config = {
-  get: jest.fn().mockReturnValue('http://localhost:3001'),
+  get: jest.fn((key: string) =>
+    key === 'PLATFORM_FEE_PERCENT' ? 0 : 'http://localhost:3001',
+  ),
 } as unknown as ConfigService;
 const providers = {
   forCountry: jest.fn().mockReturnValue({
@@ -65,6 +67,7 @@ describe('PersonalInvoicesService.findByToken', () => {
       secureToken: 'tok-abc',
       status: PersonalInvoiceStatus.PENDING,
       expiresAt: null,
+      amount: '500',
       issuer: { id: 'user-1', name: 'Alice' },
       ...overrides,
     };
@@ -136,6 +139,89 @@ describe('PersonalInvoicesService.findByToken', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(result.status).toBe(PersonalInvoiceStatus.PENDING);
+  });
+
+  it('precomputes the platform fee and total charge off the fixed invoice amount', async () => {
+    const invoice = makeInvoice({
+      expiresAt: new Date(Date.now() + 1000 * 60),
+      amount: '1000',
+    });
+    const feeConfig = {
+      get: jest.fn((key: string) =>
+        key === 'PLATFORM_FEE_PERCENT' ? 1.5 : 'http://localhost:3001',
+      ),
+    } as unknown as ConfigService;
+    const prisma = {
+      personalInvoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      feeConfig,
+      providers,
+    );
+
+    const result = await service.findByToken('tok-abc');
+
+    expect(result.platformFeePercent).toBe(1.5);
+    expect(result.platformFeeAmount).toBe(15);
+    expect(result.totalChargeAmount).toBe(1015);
+  });
+});
+
+describe('PersonalInvoicesService.initializeCheckout', () => {
+  it('charges the gross (base + fee) amount and carries the fee in metadata, crediting the issuer with the base amount', async () => {
+    const initializeCharge = jest.fn().mockResolvedValue({
+      status: 'redirect',
+      authorizationUrl: 'https://paystack.test/pay',
+      reference: 'ref-1',
+    });
+    const feeProviders = {
+      forCountry: jest.fn().mockReturnValue({ initializeCharge }),
+    } as unknown as PaymentProviderRegistry;
+    const feeConfig = {
+      get: jest.fn((key: string) =>
+        key === 'PLATFORM_FEE_PERCENT' ? 1.5 : 'http://localhost:3001',
+      ),
+    } as unknown as ConfigService;
+    const prisma = {
+      personalInvoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pi-1',
+          status: PersonalInvoiceStatus.PENDING,
+          expiresAt: null,
+          amount: '1000',
+          issuer: {
+            gatewayWalletId: 'ACCT_123',
+            country: 'KENYA',
+            payoutMobileProvider: null,
+            payoutMobileNumber: null,
+          },
+        }),
+      },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      feeConfig,
+      feeProviders,
+    );
+
+    await service.initializeCheckout('tok-abc', {
+      payerEmail: 'payer@example.com',
+    });
+
+    expect(initializeCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 1015,
+        subaccountCode: 'ACCT_123',
+        platformFeeAmount: 15,
+        metadata: expect.objectContaining({
+          personalInvoiceId: 'pi-1',
+          platformFeeAmount: 15,
+        }) as unknown,
+      }),
+    );
   });
 });
 

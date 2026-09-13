@@ -76,6 +76,14 @@ export class WebhookProcessor extends WorkerHost {
       amountSettled = verified.amountSettled;
     }
 
+    // The gateway-reported amount is gross (base + platform fee) — the
+    // event must only ever be credited the base amount. platformFeeAmount
+    // survives from checkout-init to here via webhook metadata (see
+    // PaymentsService#initializeCheckout), since neither provider persists
+    // any charge-time record we could otherwise diff against.
+    const platformFeeAmount = event.platformFeeAmount ?? 0;
+    const netAmountSettled = amountSettled - platformFeeAmount;
+
     const transaction = await this.prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
         data: {
@@ -83,7 +91,8 @@ export class WebhookProcessor extends WorkerHost {
           eventId,
           providerReference: event.providerReference,
           paymentRail: event.paymentRail,
-          amountSettled,
+          amountSettled: netAmountSettled,
+          platformFeeAmount,
           status: event.status,
         },
       });
@@ -103,7 +112,7 @@ export class WebhookProcessor extends WorkerHost {
         ) {
           const updated = await tx.invoice.update({
             where: { id: event.invoiceId },
-            data: { amountPaid: { increment: amountSettled } },
+            data: { amountPaid: { increment: netAmountSettled } },
           });
 
           const target = Number(invoice.amountRequested ?? 0);

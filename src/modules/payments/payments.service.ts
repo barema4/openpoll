@@ -16,6 +16,7 @@ import {
   MOBILE_MONEY_PROVIDERS,
   type MobileMoneyProvider,
 } from './providers/payment-provider.interface';
+import { calculatePlatformFee } from './platform-fee.util';
 import type { InitiateCheckoutDto } from './dto/initiate-checkout.dto';
 
 @Injectable()
@@ -69,6 +70,19 @@ export class PaymentsService {
       .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
       .replace(/\/$/, '');
 
+    // Charged additively on top of what the payer intends to give — the
+    // event is still credited exactly `amount`, never `amount + fee`. See
+    // WebhookProcessor, which subtracts this back out before crediting.
+    const platformFeePercent =
+      this.config.get<number>('PLATFORM_FEE_PERCENT') ?? 0;
+    const platformFeeAmount = calculatePlatformFee(amount, platformFeePercent);
+    const grossAmount = amount + platformFeeAmount;
+    const metadata = {
+      invoiceId: invoice.id,
+      eventId: invoice.eventId,
+      platformFeeAmount,
+    };
+
     if (country === OrganizationCountry.UGANDA) {
       if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
         throw new BadRequestException(
@@ -77,10 +91,10 @@ export class PaymentsService {
       }
       return provider.initializeCharge({
         email: dto.email,
-        amount,
+        amount: grossAmount,
         reference,
         currency: 'UGX',
-        metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
+        metadata,
         mobileMoney: {
           phoneNumber: dto.phoneNumber,
           provider: dto.paymentMethod,
@@ -94,10 +108,11 @@ export class PaymentsService {
 
     return provider.initializeCharge({
       email: dto.email,
-      amount,
+      amount: grossAmount,
       reference,
       subaccountCode: subaccountCode ?? undefined,
-      metadata: { invoiceId: invoice.id, eventId: invoice.eventId },
+      platformFeeAmount,
+      metadata,
       callbackUrl: `${checkoutBaseUrl}/receipt`,
       channels:
         dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)

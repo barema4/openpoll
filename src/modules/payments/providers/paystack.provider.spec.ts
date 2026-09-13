@@ -80,5 +80,45 @@ describe('PaystackProvider', () => {
       expect(parsed.invoiceId).toBe('inv_1');
       expect(parsed.eventId).toBe('evt_1');
     });
+
+    it('extracts platformFeeAmount from metadata when present', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'charge.success',
+          data: {
+            reference: 'ref_123',
+            amount: 101500,
+            channel: 'card',
+            status: 'success',
+            metadata: { invoiceId: 'inv_1', platformFeeAmount: '15' },
+          },
+        }),
+      );
+
+      const parsed = provider.parseWebhookEvent(rawBody);
+
+      expect(parsed.platformFeeAmount).toBe(15);
+    });
+
+    it('leaves platformFeeAmount undefined when absent (e.g. fee disabled)', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'charge.success',
+          data: {
+            reference: 'ref_123',
+            amount: 100000,
+            channel: 'card',
+            status: 'success',
+            metadata: { invoiceId: 'inv_1' },
+          },
+        }),
+      );
+
+      const parsed = provider.parseWebhookEvent(rawBody);
+
+      expect(parsed.platformFeeAmount).toBeUndefined();
+    });
   });
 });

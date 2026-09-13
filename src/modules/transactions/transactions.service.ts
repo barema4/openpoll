@@ -101,9 +101,13 @@ export class TransactionsService {
         )
       : null;
 
+    const platformFeeAmount = Number(transaction.platformFeeAmount);
+
     return {
       receiptNumber: transaction.providerReference,
       amountPaid: Number(transaction.amountSettled),
+      platformFeeAmount,
+      totalCharged: Number(transaction.amountSettled) + platformFeeAmount,
       paymentRail: transaction.paymentRail,
       paidAt: transaction.timestamp,
       payerName: transaction.invoice?.contributorName ?? null,

@@ -39,6 +39,26 @@ describe('PawaPayProvider.parseWebhookEvent', () => {
     expect(parsed.eventId).toBe('evt_1');
   });
 
+  it('extracts platformFeeAmount from the metadata array when present', () => {
+    const provider = makeProvider();
+    const rawBody = Buffer.from(
+      JSON.stringify({
+        depositId: 'dep_123',
+        status: 'COMPLETED',
+        amount: '1015',
+        currency: 'UGX',
+        metadata: [
+          { fieldName: 'invoiceId', fieldValue: 'inv_1' },
+          { fieldName: 'platformFeeAmount', fieldValue: '15' },
+        ],
+      }),
+    );
+
+    const parsed = provider.parseWebhookEvent(rawBody);
+
+    expect(parsed.platformFeeAmount).toBe(15);
+  });
+
   it('maps a failed deposit to FAILED status', () => {
     const provider = makeProvider();
     const rawBody = Buffer.from(

@@ -4,6 +4,60 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { ConfigService } from '@nestjs/config';
 
+describe('InvoicesService.findByToken — platform fee', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+
+  function makeConfig(platformFeePercent: number) {
+    return {
+      get: jest.fn((key: string) =>
+        key === 'PLATFORM_FEE_PERCENT'
+          ? platformFeePercent
+          : 'http://localhost:3001',
+      ),
+    } as unknown as ConfigService;
+  }
+
+  it('precomputes the fee/total off the remaining balance for a fixed-amount invoice', async () => {
+    const invoice = {
+      id: 'inv-1',
+      status: InvoiceStatus.PARTIALLY_PAID,
+      expiresAt: null,
+      amountRequested: '1000',
+      amountPaid: '400',
+    };
+    const prisma = {
+      invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+    } as unknown as PrismaService;
+    const service = new InvoicesService(prisma, audit, makeConfig(1.5));
+
+    const result = await service.findByToken('tok-abc');
+
+    // remaining = 1000 - 400 = 600; fee = 1.5% of 600 = 9
+    expect(result.platformFeeAmount).toBe(9);
+    expect(result.totalChargeAmount).toBe(609);
+  });
+
+  it('omits the fee amount for an open/permanent link with no fixed amountRequested', async () => {
+    const invoice = {
+      id: 'inv-1',
+      status: InvoiceStatus.PENDING,
+      expiresAt: null,
+      amountRequested: null,
+      amountPaid: '0',
+    };
+    const prisma = {
+      invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
+    } as unknown as PrismaService;
+    const service = new InvoicesService(prisma, audit, makeConfig(1.5));
+
+    const result = await service.findByToken('tok-abc');
+
+    expect(result.platformFeePercent).toBe(1.5);
+    expect(result.platformFeeAmount).toBeUndefined();
+    expect(result.totalChargeAmount).toBeUndefined();
+  });
+});
+
 describe('InvoicesService.getContributorSummary', () => {
   const eventId = 'event-1';
 

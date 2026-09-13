@@ -75,13 +75,19 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
       amountSettled = verified.amountSettled;
     }
 
+    // The gateway-reported amount is gross (base + platform fee) — the
+    // issuer must only ever be credited the invoice's own amount.
+    const platformFeeAmount = event.platformFeeAmount ?? 0;
+    const netAmountSettled = amountSettled - platformFeeAmount;
+
     const transaction = await this.prisma.$transaction(async (tx) => {
       const created = await tx.personalInvoiceTransaction.create({
         data: {
           personalInvoiceId,
           providerReference: event.providerReference,
           paymentRail: event.paymentRail,
-          amountSettled,
+          amountSettled: netAmountSettled,
+          platformFeeAmount,
           status: event.status,
         },
       });
@@ -94,7 +100,7 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
             status: { not: PersonalInvoiceStatus.PAID },
           },
           data: {
-            amountPaid: amountSettled,
+            amountPaid: netAmountSettled,
             status: PersonalInvoiceStatus.PAID,
             paidAt: new Date(),
           },

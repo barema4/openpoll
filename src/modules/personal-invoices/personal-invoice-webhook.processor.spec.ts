@@ -118,4 +118,38 @@ describe('PersonalInvoiceWebhookProcessor', () => {
       }),
     );
   });
+
+  it('credits the issuer with the net amount and persists the platform fee separately', async () => {
+    const { prisma, personalInvoiceTransaction, personalInvoice } =
+      makePrismaMock();
+    // The gateway always reports the gross (base + fee) amount actually charged.
+    const verifyTransaction = jest.fn().mockResolvedValue({
+      status: TransactionStatus.SUCCESS,
+      amountSettled: 515,
+    });
+    const providers = makeProviders(verifyTransaction);
+    const processor = new PersonalInvoiceWebhookProcessor(
+      prisma,
+      audit,
+      providers,
+    );
+
+    await processor.process(
+      makeJob({ amountSettled: 515, platformFeeAmount: 15 }),
+    );
+
+    expect(personalInvoiceTransaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountSettled: 500,
+          platformFeeAmount: 15,
+        }),
+      }),
+    );
+    expect(personalInvoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amountPaid: 500 }),
+      }),
+    );
+  });
 });

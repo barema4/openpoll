@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import type { Prisma } from '../../../generated/prisma/client';
 import { InvoiceSource, InvoiceStatus } from '../../../generated/prisma/enums';
 import { formatContributorSummaryText } from './contributor-summary.util';
 import type {
@@ -10,6 +11,7 @@ import type {
   ContributorEntry,
 } from './contributor-summary.util';
 import { buildInvoiceShareLinks } from './share-links.util';
+import { calculatePlatformFee } from '../payments/platform-fee.util';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { CreatePledgeDto } from './dto/create-pledge.dto';
 
@@ -146,14 +148,53 @@ export class InvoicesService {
       invoice.status === InvoiceStatus.PENDING ||
       invoice.status === InvoiceStatus.PARTIALLY_PAID;
     if (invoice.expiresAt && invoice.expiresAt < new Date() && isOpen) {
-      return this.prisma.invoice.update({
+      const expired = await this.prisma.invoice.update({
         where: { id: invoice.id },
         data: { status: InvoiceStatus.EXPIRED },
         include: INVOICE_PUBLIC_INCLUDE,
       });
+      return this.withFeeBreakdown(expired);
     }
 
-    return invoice;
+    return this.withFeeBreakdown(invoice);
+  }
+
+  // A permanent/open-amount link has no fixed amountRequested, so the
+  // frontend computes a live preview itself off platformFeePercent as the
+  // payer types. A fixed-amount invoice gets the fee precomputed here
+  // instead — on the remaining balance, not the original ask, so a
+  // partially-paid invoice shows the fee on what's actually still owed.
+  private withFeeBreakdown<
+    T extends {
+      amountRequested: Prisma.Decimal | null;
+      amountPaid: Prisma.Decimal;
+    },
+  >(
+    invoice: T,
+  ): T & {
+    platformFeePercent: number;
+    platformFeeAmount?: number;
+    totalChargeAmount?: number;
+  } {
+    const platformFeePercent =
+      this.config.get<number>('PLATFORM_FEE_PERCENT') ?? 0;
+    if (invoice.amountRequested === null) {
+      return { ...invoice, platformFeePercent };
+    }
+    const remaining = Math.max(
+      Number(invoice.amountRequested) - Number(invoice.amountPaid),
+      0,
+    );
+    const platformFeeAmount = calculatePlatformFee(
+      remaining,
+      platformFeePercent,
+    );
+    return {
+      ...invoice,
+      platformFeePercent,
+      platformFeeAmount,
+      totalChargeAmount: remaining + platformFeeAmount,
+    };
   }
 
   // Buckets single-use invoices (pledges) for an event by payment status.

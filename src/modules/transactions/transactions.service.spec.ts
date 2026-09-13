@@ -53,3 +53,30 @@ describe('TransactionsService.recordManual', () => {
     });
   });
 });
+
+describe('TransactionsService.getReceipt', () => {
+  it('breaks out the platform fee and the total actually charged', async () => {
+    const prisma = {
+      transaction: {
+        findUnique: jest.fn().mockResolvedValue({
+          providerReference: 'ref-1',
+          amountSettled: 1000,
+          platformFeeAmount: 15,
+          paymentRail: PaymentRail.CARD,
+          status: TransactionStatus.SUCCESS,
+          timestamp: new Date(),
+          invoice: null,
+          event: { id: 'event-1', title: 'Wedding', organization: null },
+        }),
+      },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TransactionsService(prisma, audit);
+
+    const receipt = await service.getReceipt('ref-1');
+
+    expect(receipt.amountPaid).toBe(1000);
+    expect(receipt.platformFeeAmount).toBe(15);
+    expect(receipt.totalCharged).toBe(1015);
+  });
+});

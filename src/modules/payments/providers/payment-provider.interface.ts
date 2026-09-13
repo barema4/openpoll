@@ -24,6 +24,15 @@ export interface InitializeChargeParams {
   amount: number;
   reference: string;
   subaccountCode?: string;
+  /**
+   * The platform's cut, already folded into `amount` (i.e. `amount` is
+   * base + fee) — passed separately so a provider that supports gateway-level
+   * splitting (Paystack, via `transaction_charge`) can route it to the
+   * platform's own account instead of the payee's. Ignored by providers with
+   * no split mechanism (PawaPay) — the caller must still fold it into
+   * `metadata` for those, so it survives to the webhook for later reconciliation.
+   */
+  platformFeeAmount?: number;
   metadata?: Record<string, unknown>;
   /** Where the payer's browser returns to after paying. Redirect-based providers (Paystack) only. */
   callbackUrl?: string;
@@ -65,6 +74,8 @@ export interface ParsedWebhookEvent {
   eventId?: string;
   /** Set instead of invoiceId/eventId for a standalone personal-invoice charge. */
   personalInvoiceId?: string;
+  /** The platform's cut, included in amountSettled — subtract before crediting. */
+  platformFeeAmount?: number;
 }
 
 export interface VerifiedTransaction {

@@ -280,6 +280,10 @@ model Transaction {
   // be withdrawable.
   recordedByUserId  String?            @map("recorded_by_user_id")
   note              String?            @map("note")
+  // The platform's cut, charged additively on top of what the payer intended
+  // to give — amountSettled is always net of this (what the org is credited).
+  // Zero for paymentRail: MANUAL (no real gateway charge happened).
+  platformFeeAmount Decimal            @default(0) @map("platform_fee_amount") @db.Decimal(14, 2)
 
   invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -373,6 +377,9 @@ model PersonalInvoiceTransaction {
   amountSettled     Decimal           @map("amount_settled") @db.Decimal(14, 2)
   status            TransactionStatus @default(PENDING)
   timestamp         DateTime          @default(now())
+  // The platform's cut, charged additively on top of what the payer intended
+  // to give — amountSettled is always net of this.
+  platformFeeAmount Decimal           @default(0) @map("platform_fee_amount") @db.Decimal(14, 2)
 
   personalInvoice PersonalInvoice @relation(fields: [personalInvoiceId], references: [id], onDelete: Cascade)
 

@@ -34,6 +34,12 @@ export const envSchema = z.object({
   // Allowed CORS origin(s) for the frontend, comma-separated.
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
 
+  // Charged additively on top of what a payer intends to give (e.g. they
+  // mean to give 1000, are charged 1000 + this % — the org is still
+  // credited exactly 1000). Default 0 so test/CI amount assertions never
+  // need to account for a fee unless a test explicitly opts in.
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).default(0),
+
   // Optional — EmailService logs instead of sending when this is unset, so
   // dev/test/CI never need a real Resend account to boot.
   RESEND_API_KEY: z.string().optional(),
