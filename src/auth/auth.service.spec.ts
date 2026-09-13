@@ -1,6 +1,9 @@
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
-import { OrganizationInvitationStatus } from '../../generated/prisma/enums';
+import {
+  OrganizationInvitationStatus,
+  PlatformStaffInvitationStatus,
+} from '../../generated/prisma/enums';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
 import type { EmailService } from '../email/email.service';
@@ -230,6 +233,89 @@ describe('AuthService.register with an invite token', () => {
     });
 
     expect(result.user.email).toBe('jane@example.com');
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.register with a staff invite token', () => {
+  it('accepts a pending staff invitation whose email matches, granting STAFF and reflecting it immediately', async () => {
+    const transaction = jest.fn().mockResolvedValue(undefined);
+    const invitation = {
+      id: 'staff-invite-1',
+      email: 'jane@example.com',
+      status: PlatformStaffInvitationStatus.PENDING,
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          email: 'jane@example.com',
+          name: 'Jane',
+          platformRole: null,
+        }),
+        update: jest.fn(),
+      },
+      platformStaffInvitation: {
+        findUnique: jest.fn().mockResolvedValue(invitation),
+        update: jest.fn(),
+      },
+      $transaction: transaction,
+    };
+    const { service, auditRecord } = buildService(prisma);
+
+    const result = await service.register({
+      email: 'jane@example.com',
+      password: 'password123',
+      name: 'Jane',
+      staffInviteToken: 'raw-token',
+    });
+
+    expect(transaction).toHaveBeenCalled();
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'PLATFORM_STAFF_INVITATION_ACCEPTED',
+      }),
+    );
+    // Reflected immediately in the response, not just the DB — issueTokens()
+    // was called with the same in-memory object tryAcceptStaffInvitation mutated.
+    expect(result.user.platformRole).toBe('STAFF');
+  });
+
+  it('silently ignores a staff invite token for a different email, never blocking registration', async () => {
+    const invitation = {
+      id: 'staff-invite-1',
+      email: 'someone-else@example.com',
+      status: PlatformStaffInvitationStatus.PENDING,
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const transaction = jest.fn();
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          email: 'jane@example.com',
+          name: 'Jane',
+          platformRole: null,
+        }),
+      },
+      platformStaffInvitation: {
+        findUnique: jest.fn().mockResolvedValue(invitation),
+      },
+      $transaction: transaction,
+    };
+    const { service } = buildService(prisma);
+
+    const result = await service.register({
+      email: 'jane@example.com',
+      password: 'password123',
+      name: 'Jane',
+      staffInviteToken: 'raw-token',
+    });
+
+    expect(result.user.platformRole).toBeNull();
     expect(transaction).not.toHaveBeenCalled();
   });
 });

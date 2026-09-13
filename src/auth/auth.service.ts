@@ -12,7 +12,12 @@ import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
-import { OrganizationInvitationStatus } from '../../generated/prisma/enums';
+import {
+  OrganizationInvitationStatus,
+  PlatformRole,
+  PlatformStaffInvitationStatus,
+} from '../../generated/prisma/enums';
+import { resolveEffectivePlatformRole } from '../common/guards/resolve-effective-platform-role.util';
 import type { RegisterDto } from './dto/register.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -32,7 +37,12 @@ export interface TokenPair {
 }
 
 export interface AuthResponse extends TokenPair {
-  user: { id: string; email: string; name: string };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    platformRole: PlatformRole | null;
+  };
 }
 
 @Injectable()
@@ -62,6 +72,16 @@ export class AuthService {
 
     if (dto.inviteToken) {
       await this.tryAcceptInvitation(dto.inviteToken, dto.email, user.id);
+    }
+    if (dto.staffInviteToken) {
+      // Mutate the in-memory record so issueTokens() reflects the grant
+      // immediately — it was fetched before this invitation was resolved.
+      const grantedRole = await this.tryAcceptStaffInvitation(
+        dto.staffInviteToken,
+        dto.email,
+        user.id,
+      );
+      if (grantedRole) user.platformRole = grantedRole;
     }
 
     return this.issueTokens(user);
@@ -187,6 +207,52 @@ export class AuthService {
     }
   }
 
+  // Resolves a platform-staff-invitation token captured at registration
+  // time. Same never-throw contract as tryAcceptInvitation — a bad, stale,
+  // or mismatched token must never block account creation. Returns the
+  // granted role (always STAFF) so the caller can reflect it in the
+  // in-memory user record before issuing tokens.
+  private async tryAcceptStaffInvitation(
+    rawToken: string,
+    email: string,
+    userId: string,
+  ): Promise<PlatformRole | null> {
+    try {
+      const invitation = await this.prisma.platformStaffInvitation.findUnique({
+        where: { tokenHash: hashToken(rawToken) },
+      });
+      if (
+        !invitation ||
+        invitation.status !== PlatformStaffInvitationStatus.PENDING ||
+        invitation.expiresAt < new Date() ||
+        invitation.email.toLowerCase() !== email.toLowerCase()
+      ) {
+        return null;
+      }
+
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { platformRole: PlatformRole.STAFF },
+        }),
+        this.prisma.platformStaffInvitation.update({
+          where: { id: invitation.id },
+          data: { status: PlatformStaffInvitationStatus.ACCEPTED },
+        }),
+      ]);
+
+      await this.audit.record({
+        userId,
+        action: 'PLATFORM_STAFF_INVITATION_ACCEPTED',
+      });
+
+      return PlatformRole.STAFF;
+    } catch {
+      // Never block registration on a bad invite token.
+      return null;
+    }
+  }
+
   async login(dto: LoginDto): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -224,6 +290,7 @@ export class AuthService {
     id: string;
     email: string;
     name: string;
+    platformRole: PlatformRole | null;
   }): Promise<AuthResponse> {
     const payload: JwtPayload = { sub: user.id, email: user.email };
 
@@ -243,7 +310,12 @@ export class AuthService {
     ]);
 
     return {
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        platformRole: resolveEffectivePlatformRole(user, this.config),
+      },
       accessToken,
       refreshToken,
     };

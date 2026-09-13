@@ -21,6 +21,7 @@ import { UsersModule } from './modules/users/users.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { WithdrawalsModule } from './modules/withdrawals/withdrawals.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     PayoutsModule,
     WithdrawalsModule,
     ReconciliationModule,
+    PlatformAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

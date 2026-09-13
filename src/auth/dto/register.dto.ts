@@ -19,4 +19,10 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   inviteToken?: string;
+
+  // Same idea, for a platform-staff invitation (?staffInvite=...) — grants
+  // platformRole: STAFF instead of an OrganizationMembership.
+  @IsOptional()
+  @IsString()
+  staffInviteToken?: string;
 }

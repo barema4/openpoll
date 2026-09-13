@@ -5,10 +5,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { OrganizationCountry } from '../../../generated/prisma/enums';
+import type { PlatformRole } from '../../../generated/prisma/enums';
+import { resolveEffectivePlatformRole } from '../../common/guards/resolve-effective-platform-role.util';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
@@ -27,6 +30,7 @@ const SELECT = {
   payoutAccountLast4: true,
   payoutMobileProvider: true,
   payoutMobileNumber: true,
+  platformRole: true,
   createdAt: true,
 } as const;
 
@@ -36,14 +40,31 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly payouts: PayoutsService,
     private readonly audit: AuditService,
+    private readonly config: ConfigService,
   ) {}
+
+  // Reflects the operator-email fallback (see resolve-effective-platform-role.ts)
+  // so the frontend's "Admin" nav link stays accurate even for the bootstrap
+  // owner, whose DB row may have no platformRole set at all.
+  private toProfile<
+    T extends {
+      email: string;
+      platformRole: PlatformRole | null;
+      payoutMobileNumber: string | null;
+    },
+  >(user: T) {
+    return {
+      ...maskPhone(user),
+      platformRole: resolveEffectivePlatformRole(user, this.config),
+    };
+  }
 
   async findOne(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: SELECT,
     });
-    return maskPhone(user);
+    return this.toProfile(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
@@ -83,7 +104,7 @@ export class UsersService {
       data: { name: dto.name, email: dto.email, country: dto.country },
       select: SELECT,
     });
-    return maskPhone(updated);
+    return this.toProfile(updated);
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
@@ -129,7 +150,7 @@ export class UsersService {
       data: details,
       select: SELECT,
     });
-    return maskPhone(updated);
+    return this.toProfile(updated);
   }
 
   // Uganda/PawaPay only — no bank-style resolve/subaccount step to call out
@@ -161,6 +182,6 @@ export class UsersService {
       payload: { provider: dto.provider },
     });
 
-    return maskPhone(updated);
+    return this.toProfile(updated);
   }
 }

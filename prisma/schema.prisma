@@ -34,18 +34,29 @@ model User {
   country              OrganizationCountry @default(KENYA)
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
+  // Platform-operator access (reconciliation, staff management) — distinct
+  // from OrgRole, which is scoped per-organization. Null means a regular
+  // user with no admin access at all. See resolve-effective-platform-role.ts
+  // for the operator-email bootstrap fallback layered on top of this.
+  platformRole       PlatformRole? @map("platform_role")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  memberships          OrganizationMembership[]
-  auditLogs            AuditLog[]
-  personalInvoices     PersonalInvoice[]
-  passwordResetTokens  PasswordResetToken[]
-  sentInvitations      OrganizationInvitation[]
-  allocations          Allocation[]
-  requestedWithdrawals Withdrawal[]
-  manualTransactions   Transaction[]
+  memberships           OrganizationMembership[]
+  auditLogs             AuditLog[]
+  personalInvoices      PersonalInvoice[]
+  passwordResetTokens   PasswordResetToken[]
+  sentInvitations       OrganizationInvitation[]
+  sentStaffInvitations  PlatformStaffInvitation[]
+  allocations           Allocation[]
+  requestedWithdrawals  Withdrawal[]
+  manualTransactions    Transaction[]
 
   @@map("users")
+}
+
+enum PlatformRole {
+  OWNER
+  STAFF
 }
 
 enum OrgRole {
@@ -445,6 +456,35 @@ model OrganizationInvitation {
   invitedBy    User         @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
 
   @@map("organization_invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Platform staff invitations — lets an Owner invite a company employee who
+// doesn't have an account yet. Every accepted invite grants STAFF (an Owner
+// promotes someone to OWNER separately, via a direct update — not through
+// this flow, since there should rarely be more than one). Mirrors
+// OrganizationInvitation's token/expiry/never-block-registration shape.
+// ---------------------------------------------------------------------------
+
+enum PlatformStaffInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model PlatformStaffInvitation {
+  id              String                         @id @default(uuid())
+  email           String
+  invitedByUserId String                         @map("invited_by_user_id")
+  tokenHash       String                         @unique @map("token_hash")
+  status          PlatformStaffInvitationStatus  @default(PENDING)
+  expiresAt       DateTime                       @map("expires_at")
+  createdAt       DateTime                       @default(now()) @map("created_at")
+
+  invitedBy User @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("platform_staff_invitations")
 }
 
 // ---------------------------------------------------------------------------

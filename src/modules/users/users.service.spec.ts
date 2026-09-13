@@ -3,6 +3,9 @@ import { UsersService } from './users.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { PayoutsService } from '../payouts/payouts.service';
 import type { AuditService } from '../../audit/audit.service';
+import type { ConfigService } from '@nestjs/config';
+
+const config = { get: jest.fn() } as unknown as ConfigService;
 
 describe('UsersService.setPayout', () => {
   it('onboards the payout with the user name as businessName and persists the result', async () => {
@@ -21,7 +24,7 @@ describe('UsersService.setPayout', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, payouts, audit);
+    const service = new UsersService(prisma, payouts, audit, config);
 
     await service.setPayout('user-1', {
       bankCode: '011',
@@ -57,7 +60,12 @@ describe('UsersService.updateProfile', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await expect(
       service.updateProfile('user-1', { email: 'taken@example.com' }),
@@ -73,7 +81,12 @@ describe('UsersService.updateProfile', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await service.updateProfile('user-1', {
       name: 'Jane D.',
@@ -99,7 +112,12 @@ describe('UsersService.updateProfile', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await expect(
       service.updateProfile('user-1', { country: 'UGANDA' }),
@@ -119,7 +137,12 @@ describe('UsersService.updateProfile', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await service.updateProfile('user-1', { country: 'UGANDA' });
 
@@ -140,7 +163,12 @@ describe('UsersService.setMobileMoneyPayout', () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KENYA' }),
       },
     } as unknown as PrismaService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await expect(
       service.setMobileMoneyPayout('user-1', {
@@ -161,7 +189,12 @@ describe('UsersService.setMobileMoneyPayout', () => {
         update,
       },
     } as unknown as PrismaService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     const result = await service.setMobileMoneyPayout('user-1', {
       provider: 'MTN_MOMO_UGA',
@@ -195,7 +228,12 @@ describe('UsersService.changePassword', () => {
     } as unknown as PrismaService;
     const auditRecord = jest.fn();
     const audit = { record: auditRecord } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     await expect(
       service.changePassword('user-1', {
@@ -218,7 +256,12 @@ describe('UsersService.changePassword', () => {
     } as unknown as PrismaService;
     const auditRecord = jest.fn();
     const audit = { record: auditRecord } as unknown as AuditService;
-    const service = new UsersService(prisma, {} as PayoutsService, audit);
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
 
     const result = await service.changePassword('user-1', {
       currentPassword: 'correct',
