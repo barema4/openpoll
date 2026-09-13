@@ -12,6 +12,7 @@ export interface InvoiceShareLinks {
 function buildMessage(params: {
   contributorName: string | null;
   eventTitle: string;
+  organizationName: string | null;
   amountRequested: number | null;
   checkoutUrl: string;
 }): string {
@@ -21,7 +22,13 @@ function buildMessage(params: {
   const amountLine = params.amountRequested
     ? `Amount: ${params.amountRequested.toLocaleString('en-US')}`
     : 'Contribute any amount.';
-  return `${greeting} here's your payment link for "${params.eventTitle}":\n${params.checkoutUrl}\n${amountLine}`;
+  // A solo/"Quick collection" event has no organization worth naming — its
+  // auto-provisioned personal org is an implementation detail, not something
+  // a contributor should see.
+  const orgSuffix = params.organizationName
+    ? ` by ${params.organizationName}`
+    : '';
+  return `${greeting} here's your payment link for "${params.eventTitle}"${orgSuffix}:\n${params.checkoutUrl}\n${amountLine}`;
 }
 
 // wa.me requires digits only (no "+", spaces, or dashes).
@@ -36,12 +43,14 @@ export function buildInvoiceShareLinks(params: {
   contributorPhone: string | null;
   contributorEmail: string | null;
   eventTitle: string;
+  organizationName: string | null;
   amountRequested: number | null;
 }): InvoiceShareLinks {
   const checkoutUrl = `${params.checkoutBaseUrl.replace(/\/$/, '')}/pay/${params.secureToken}`;
   const message = buildMessage({
     contributorName: params.contributorName,
     eventTitle: params.eventTitle,
+    organizationName: params.organizationName,
     amountRequested: params.amountRequested,
     checkoutUrl,
   });

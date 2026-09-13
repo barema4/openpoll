@@ -98,8 +98,22 @@ export class InvoicesService {
   async getShareLinks(invoiceId: string) {
     const invoice = await this.prisma.invoice.findUniqueOrThrow({
       where: { id: invoiceId },
-      include: { event: { select: { title: true } } },
+      include: {
+        event: {
+          select: {
+            title: true,
+            organization: { select: { name: true, isPersonal: true } },
+          },
+        },
+      },
     });
+
+    // A "Quick collection" event's auto-provisioned personal org isn't a
+    // real organization a contributor would recognize — only name real ones.
+    const organizationName =
+      invoice.event.organization && !invoice.event.organization.isPersonal
+        ? invoice.event.organization.name
+        : null;
 
     return buildInvoiceShareLinks({
       checkoutBaseUrl: this.config.get<string>('PUBLIC_CHECKOUT_BASE_URL')!,
@@ -108,6 +122,7 @@ export class InvoicesService {
       contributorPhone: invoice.contributorPhone,
       contributorEmail: invoice.contributorEmail,
       eventTitle: invoice.event.title,
+      organizationName,
       amountRequested: invoice.amountRequested
         ? Number(invoice.amountRequested)
         : null,

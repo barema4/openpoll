@@ -176,4 +176,36 @@ describe('InvoicesService.getShareLinks', () => {
     expect(links.whatsapp).toEqual({ available: false, url: null });
     expect(links.email).toEqual({ available: false, url: null });
   });
+
+  it("includes the organization's name in the message when the event belongs to a real organization", async () => {
+    const prisma = makePrismaMock({
+      event: {
+        title: 'Test Wedding',
+        organization: { name: 'Sunrise Church Committee', isPersonal: false },
+      },
+    });
+    const service = new InvoicesService(prisma, audit, config);
+
+    const links = await service.getShareLinks('inv-1');
+
+    expect(links.whatsapp.url).toContain(
+      encodeURIComponent('Sunrise Church Committee'),
+    );
+  });
+
+  it("omits the organization's name for a Quick Collection event (auto-provisioned personal org)", async () => {
+    const prisma = makePrismaMock({
+      event: {
+        title: 'Test Wedding',
+        organization: { name: "Alice's Workspace", isPersonal: true },
+      },
+    });
+    const service = new InvoicesService(prisma, audit, config);
+
+    const links = await service.getShareLinks('inv-1');
+
+    expect(links.whatsapp.url).not.toContain(
+      encodeURIComponent("Alice's Workspace"),
+    );
+  });
 });
