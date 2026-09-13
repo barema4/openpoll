@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { WithdrawalsService } from './withdrawals.service';
-import { OrganizationCountry } from '../../../generated/prisma/enums';
+import {
+  OrganizationCountry,
+  PaymentRail,
+} from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
@@ -62,6 +65,28 @@ describe('WithdrawalsService.getBalance', () => {
     );
 
     expect(await service.getBalance(organizationId)).toBe(0);
+  });
+
+  it('excludes manual (off-app) contributions from the withdrawable balance', async () => {
+    const prisma = makePrisma({ totalReceived: 10000, totalWithdrawn: 0 });
+    const service = new WithdrawalsService(
+      prisma,
+      audit,
+      {} as PawaPayProvider,
+    );
+
+    await service.getBalance(organizationId);
+
+    const aggregateMock = (
+      prisma as unknown as { transaction: { aggregate: jest.Mock } }
+    ).transaction.aggregate;
+    expect(aggregateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          paymentRail: { not: PaymentRail.MANUAL },
+        }),
+      }),
+    );
   });
 });
 

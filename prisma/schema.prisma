@@ -43,6 +43,7 @@ model User {
   sentInvitations      OrganizationInvitation[]
   allocations          Allocation[]
   requestedWithdrawals Withdrawal[]
+  manualTransactions   Transaction[]
 
   @@map("users")
 }
@@ -250,6 +251,9 @@ model Invoice {
 enum PaymentRail {
   MOBILE_MONEY
   CARD
+  // Money received outside the app (cash, a direct mobile money transfer)
+  // and manually logged by an organizer/treasurer — see Transaction.note.
+  MANUAL
 }
 
 enum TransactionStatus {
@@ -268,9 +272,18 @@ model Transaction {
   categoryTag       String?            @map("category_tag")
   status            TransactionStatus  @default(PENDING)
   timestamp         DateTime           @default(now())
+  // Set only for paymentRail: MANUAL — money an organizer/treasurer received
+  // outside the app (cash, a direct mobile money transfer to the org's own
+  // number) and logged so it still counts toward the event's collected total.
+  // Deliberately excluded from WithdrawalsService.getBalance(): it was never
+  // actually deposited into the platform's PawaPay balance, so it must never
+  // be withdrawable.
+  recordedByUserId  String?            @map("recorded_by_user_id")
+  note              String?            @map("note")
 
   invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  recordedBy  User?        @relation(fields: [recordedByUserId], references: [id], onDelete: SetNull)
 
   @@map("transactions")
 }

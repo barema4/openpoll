@@ -6,6 +6,7 @@ import { PawaPayProvider } from '../payments/providers/pawapay.provider';
 import type { MobileMoneyProvider } from '../payments/providers/payment-provider.interface';
 import {
   OrganizationCountry,
+  PaymentRail,
   TransactionStatus,
   WithdrawalStatus,
 } from '../../../generated/prisma/enums';
@@ -22,10 +23,19 @@ export class WithdrawalsService {
   // Total collected (SUCCESS transactions across every event this org owns)
   // minus what's already in flight or paid out — the same "pool minus
   // what's spoken for" shape as budget allocation's remaining balance.
+  // Excludes paymentRail: MANUAL — those entries record money received
+  // outside the app (cash, a direct mobile money transfer) and were never
+  // actually deposited into the platform's PawaPay balance, so they must
+  // never be withdrawable even though they do count toward the event's
+  // collected total for budget-allocation purposes.
   async getBalance(organizationId: string): Promise<number> {
     const [receivedAgg, withdrawnAgg] = await Promise.all([
       this.prisma.transaction.aggregate({
-        where: { status: TransactionStatus.SUCCESS, event: { organizationId } },
+        where: {
+          status: TransactionStatus.SUCCESS,
+          paymentRail: { not: PaymentRail.MANUAL },
+          event: { organizationId },
+        },
         _sum: { amountSettled: true },
       }),
       this.prisma.withdrawal.aggregate({

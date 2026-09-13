@@ -1,10 +1,54 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { TransactionStatus } from '../../../generated/prisma/enums';
+import { AuditService } from '../../audit/audit.service';
+import {
+  PaymentRail,
+  TransactionStatus,
+} from '../../../generated/prisma/enums';
+import type { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
 
 @Injectable()
 export class TransactionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  // For money received outside the app — cash, a direct mobile money
+  // transfer straight to the org's own line — logged so the event's
+  // collected total and budget-allocation pool stay accurate even when not
+  // every contribution flows through the payment gateway. Deliberately
+  // status: SUCCESS (the org already has this money in hand) but
+  // paymentRail: MANUAL, which WithdrawalsService.getBalance() excludes —
+  // it was never actually deposited into the platform's PawaPay balance, so
+  // it must never be withdrawable.
+  async recordManual(userId: string, dto: RecordManualTransactionDto) {
+    const transaction = await this.prisma.transaction.create({
+      data: {
+        eventId: dto.eventId,
+        providerReference: `manual:${randomUUID()}`,
+        paymentRail: PaymentRail.MANUAL,
+        amountSettled: dto.amount,
+        status: TransactionStatus.SUCCESS,
+        recordedByUserId: userId,
+        note: dto.note,
+      },
+    });
+
+    await this.audit.record({
+      userId,
+      eventId: dto.eventId,
+      action: 'MANUAL_CONTRIBUTION_RECORDED',
+      payload: {
+        transactionId: transaction.id,
+        amount: dto.amount,
+        note: dto.note ?? null,
+      },
+    });
+
+    return transaction;
+  }
 
   findOne(transactionId: string) {
     return this.prisma.transaction.findUniqueOrThrow({
