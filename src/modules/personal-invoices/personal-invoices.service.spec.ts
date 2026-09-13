@@ -4,19 +4,20 @@ import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { ConfigService } from '@nestjs/config';
-import type { PaymentProvider } from '../payments/providers/payment-provider.interface';
+import type { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 
 const auditRecord = jest.fn();
 const audit = { record: auditRecord } as unknown as AuditService;
 const config = {
   get: jest.fn().mockReturnValue('http://localhost:3001'),
 } as unknown as ConfigService;
-const provider = {
-  initializeCharge: jest.fn(),
-  verifySignature: jest.fn(),
-  parseWebhookEvent: jest.fn(),
-  verifyTransaction: jest.fn(),
-} as unknown as PaymentProvider;
+const providers = {
+  forCountry: jest.fn().mockReturnValue({
+    initializeCharge: jest.fn(),
+    parseWebhookEvent: jest.fn(),
+    verifyTransaction: jest.fn(),
+  }),
+} as unknown as PaymentProviderRegistry;
 
 describe('PersonalInvoicesService.create', () => {
   it('persists a personal invoice scoped to the issuer with a secure token and expiry', async () => {
@@ -34,7 +35,7 @@ describe('PersonalInvoicesService.create', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     const result = await service.create('user-1', {
@@ -77,7 +78,7 @@ describe('PersonalInvoicesService.findByToken', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     await expect(service.findByToken('missing')).rejects.toThrow(
@@ -100,7 +101,7 @@ describe('PersonalInvoicesService.findByToken', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     const result = await service.findByToken('tok-abc');
@@ -128,7 +129,7 @@ describe('PersonalInvoicesService.findByToken', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     const result = await service.findByToken('tok-abc');
@@ -159,7 +160,7 @@ describe('PersonalInvoicesService.getShareLinks', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     const links = await service.getShareLinks('pi-1', 'user-1');
@@ -182,7 +183,7 @@ describe('PersonalInvoicesService.getShareLinks', () => {
       prisma,
       audit,
       config,
-      provider,
+      providers,
     );
 
     await expect(service.getShareLinks('pi-1', 'user-1')).rejects.toThrow(

@@ -28,6 +28,12 @@ model User {
   payoutBankName     String?  @map("payout_bank_name")
   payoutAccountName  String?  @map("payout_account_name")
   payoutAccountLast4 String?  @map("payout_account_last4")
+  // Determines which payment provider/currency this user's personal invoices
+  // use — same idea as Organization.country, just at the individual level
+  // since personal invoicing needs no organization at all.
+  country              OrganizationCountry @default(KENYA)
+  payoutMobileProvider String?             @map("payout_mobile_provider")
+  payoutMobileNumber   String?             @map("payout_mobile_number")
   createdAt          DateTime @default(now()) @map("created_at")
 
   memberships          OrganizationMembership[]

@@ -37,10 +37,16 @@ import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-in
     { provide: PAWAPAY_PROVIDER, useExisting: PawaPayProvider },
   ],
   // PAYSTACK_PROVIDER stays exported for the Kenya-only, bank-shaped
-  // consumers (PayoutsModule, PersonalInvoicesModule) that have no
-  // equivalent PawaPay path yet. PawaPayProvider is exported concretely for
-  // WithdrawalsModule (payouts have no Paystack equivalent, so there's no
-  // shared-interface abstraction to inject instead).
-  exports: [PAYSTACK_PROVIDER, PaystackProvider, PawaPayProvider],
+  // consumer (PayoutsModule) that has no equivalent PawaPay path.
+  // PawaPayProvider is exported concretely for WithdrawalsModule (payouts
+  // have no Paystack equivalent, so there's no shared-interface abstraction
+  // to inject instead). PaymentProviderRegistry is exported for any
+  // country-aware charging consumer outside this module (PersonalInvoicesModule).
+  exports: [
+    PAYSTACK_PROVIDER,
+    PaystackProvider,
+    PawaPayProvider,
+    PaymentProviderRegistry,
+  ],
 })
 export class PaymentsModule {}

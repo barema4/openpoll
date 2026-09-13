@@ -4,6 +4,7 @@ import { UsersService } from './users.service';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
@@ -23,6 +24,14 @@ export class UsersController {
   @Patch('me/payout')
   setPayout(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetPayoutDto) {
     return this.usersService.setPayout(user.id, dto);
+  }
+
+  @Patch('me/payout-mobile-money')
+  setMobileMoneyPayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetMobileMoneyPayoutDto,
+  ) {
+    return this.usersService.setMobileMoneyPayout(user.id, dto);
   }
 
   @Patch('me')

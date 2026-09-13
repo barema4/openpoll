@@ -1,17 +1,15 @@
-import { Inject, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import {
+  OrganizationCountry,
   PersonalInvoiceStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from './personal-invoices.constants';
-import {
-  PAYSTACK_PROVIDER,
-  type PaymentProvider,
-} from '../payments/providers/payment-provider.interface';
+import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from '../payments/providers/payment-provider.interface';
 
 const AMOUNT_TOLERANCE = 0.01;
@@ -23,7 +21,7 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    @Inject(PAYSTACK_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly providers: PaymentProviderRegistry,
   ) {
     super();
   }
@@ -50,12 +48,15 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
     }
 
     // Defense-in-depth: a webhook signature check proves the payload came
-    // from Paystack, but not that its body wasn't manipulated upstream of
+    // from the gateway, but not that its body wasn't manipulated upstream of
     // signing, nor guards against a bug in that check. Before crediting
-    // anything, independently confirm status + amount directly with Paystack.
+    // anything, independently confirm status + amount directly with
+    // whichever provider (Paystack/Kenya or PawaPay/Uganda) this invoice's
+    // issuer uses.
     let amountSettled = event.amountSettled;
     if (event.status === TransactionStatus.SUCCESS) {
-      const verified = await this.provider.verifyTransaction(
+      const provider = await this.resolveProviderForInvoice(personalInvoiceId);
+      const verified = await provider.verifyTransaction(
         event.providerReference,
       );
       if (verified.status !== TransactionStatus.SUCCESS) {
@@ -111,5 +112,15 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
         providerReference: event.providerReference,
       },
     });
+  }
+
+  private async resolveProviderForInvoice(personalInvoiceId: string) {
+    const invoice = await this.prisma.personalInvoice.findUniqueOrThrow({
+      where: { id: personalInvoiceId },
+      select: { issuer: { select: { country: true } } },
+    });
+    return this.providers.forCountry(
+      invoice.issuer?.country ?? OrganizationCountry.KENYA,
+    );
   }
 }

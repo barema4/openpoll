@@ -87,6 +87,101 @@ describe('UsersService.updateProfile', () => {
       }),
     );
   });
+
+  it('rejects a country change once a payout method is already set up', async () => {
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          country: 'KENYA',
+          gatewayWalletId: 'ACCT_123',
+          payoutMobileProvider: null,
+        }),
+      },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new UsersService(prisma, {} as PayoutsService, audit);
+
+    await expect(
+      service.updateProfile('user-1', { country: 'UGANDA' }),
+    ).rejects.toThrow(/cannot change country/i);
+  });
+
+  it('allows a country change when no payout method is set up yet', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'user-1' });
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          country: 'KENYA',
+          gatewayWalletId: null,
+          payoutMobileProvider: null,
+        }),
+        update,
+      },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new UsersService(prisma, {} as PayoutsService, audit);
+
+    await service.updateProfile('user-1', { country: 'UGANDA' });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ country: 'UGANDA' }),
+      }),
+    );
+  });
+});
+
+describe('UsersService.setMobileMoneyPayout', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+
+  it('rejects when the user is not on the Uganda country setting', async () => {
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KENYA' }),
+      },
+    } as unknown as PrismaService;
+    const service = new UsersService(prisma, {} as PayoutsService, audit);
+
+    await expect(
+      service.setMobileMoneyPayout('user-1', {
+        provider: 'MTN_MOMO_UGA',
+        phoneNumber: '256771234567',
+      }),
+    ).rejects.toThrow(/only available/i);
+  });
+
+  it('stores the provider/number and masks the number to last 4', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'user-1',
+      payoutMobileNumber: '256771234567',
+    });
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UGANDA' }),
+        update,
+      },
+    } as unknown as PrismaService;
+    const service = new UsersService(prisma, {} as PayoutsService, audit);
+
+    const result = await service.setMobileMoneyPayout('user-1', {
+      provider: 'MTN_MOMO_UGA',
+      phoneNumber: '256771234567',
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          payoutMobileProvider: 'MTN_MOMO_UGA',
+          payoutMobileNumber: '256771234567',
+        },
+      }),
+    );
+    expect(result).not.toHaveProperty('payoutMobileNumber');
+    expect(result).toMatchObject({
+      id: 'user-1',
+      payoutMobileNumberLast4: '4567',
+    });
+  });
 });
 
 describe('UsersService.changePassword', () => {

@@ -1,17 +1,20 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
-import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
 import {
-  PAYSTACK_PROVIDER,
-  type PaymentProvider,
+  OrganizationCountry,
+  PersonalInvoiceStatus,
+} from '../../../generated/prisma/enums';
+import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
+import {
+  MOBILE_MONEY_PROVIDERS,
+  type MobileMoneyProvider,
 } from '../payments/providers/payment-provider.interface';
 import { buildPersonalInvoiceShareLinks } from './share-links.util';
 import type { CreatePersonalInvoiceDto } from './dto/create-personal-invoice.dto';
@@ -20,8 +23,14 @@ import type { InitiatePersonalInvoiceCheckoutDto } from './dto/initiate-personal
 const DEFAULT_EXPIRY_DAYS = 30;
 
 const PUBLIC_INCLUDE = {
-  issuer: { select: { id: true, name: true } },
+  issuer: { select: { id: true, name: true, country: true } },
 } as const;
+
+function isMobileMoneyProvider(
+  value: string | undefined,
+): value is MobileMoneyProvider {
+  return (MOBILE_MONEY_PROVIDERS as readonly string[]).includes(value ?? '');
+}
 
 @Injectable()
 export class PersonalInvoicesService {
@@ -29,7 +38,7 @@ export class PersonalInvoicesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
-    @Inject(PAYSTACK_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly providers: PaymentProviderRegistry,
   ) {}
 
   async create(userId: string, dto: CreatePersonalInvoiceDto) {
@@ -125,7 +134,16 @@ export class PersonalInvoicesService {
   ) {
     const invoice = await this.prisma.personalInvoice.findUnique({
       where: { secureToken: token },
-      include: { issuer: { select: { gatewayWalletId: true } } },
+      include: {
+        issuer: {
+          select: {
+            gatewayWalletId: true,
+            country: true,
+            payoutMobileProvider: true,
+            payoutMobileNumber: true,
+          },
+        },
+      },
     });
     if (!invoice) {
       throw new NotFoundException('Personal invoice not found');
@@ -144,20 +162,45 @@ export class PersonalInvoicesService {
       throw new BadRequestException('This invoice has expired');
     }
 
-    const reference = `opi_${randomBytes(12).toString('hex')}`;
-    const checkoutBaseUrl = this.config
-      .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
-      .replace(/\/$/, '');
+    const reference = randomUUID();
+    const provider = this.providers.forCountry(invoice.issuer.country);
+    let result;
 
-    const result = await this.provider.initializeCharge({
-      email: dto.payerEmail,
-      amount: Number(invoice.amount),
-      reference,
-      subaccountCode: invoice.issuer.gatewayWalletId ?? undefined,
-      metadata: { personalInvoiceId: invoice.id },
-      callbackUrl: `${checkoutBaseUrl}/i/${token}`,
-      channels: dto.paymentMethod ? [dto.paymentMethod] : undefined,
-    });
+    if (invoice.issuer.country === OrganizationCountry.UGANDA) {
+      if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
+        throw new BadRequestException(
+          'A phone number and network (MTN or Airtel) are required to pay this invoice',
+        );
+      }
+      result = await provider.initializeCharge({
+        email: dto.payerEmail,
+        amount: Number(invoice.amount),
+        reference,
+        currency: 'UGX',
+        metadata: { personalInvoiceId: invoice.id },
+        mobileMoney: {
+          phoneNumber: dto.phoneNumber,
+          provider: dto.paymentMethod,
+        },
+      });
+    } else {
+      const checkoutBaseUrl = this.config
+        .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
+        .replace(/\/$/, '');
+
+      result = await provider.initializeCharge({
+        email: dto.payerEmail,
+        amount: Number(invoice.amount),
+        reference,
+        subaccountCode: invoice.issuer.gatewayWalletId ?? undefined,
+        metadata: { personalInvoiceId: invoice.id },
+        callbackUrl: `${checkoutBaseUrl}/i/${token}`,
+        channels:
+          dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)
+            ? [dto.paymentMethod]
+            : undefined,
+      });
+    }
 
     await this.audit.record({
       action: 'PERSONAL_INVOICE_CHECKOUT_INITIATED',

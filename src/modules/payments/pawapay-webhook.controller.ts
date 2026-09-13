@@ -13,6 +13,7 @@ import { Queue } from 'bullmq';
 import type { Request } from 'express';
 import { PawaPayProvider } from './providers/pawapay.provider';
 import { WEBHOOK_QUEUE } from './payments.constants';
+import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { WithdrawalStatus } from '../../../generated/prisma/enums';
@@ -36,6 +37,8 @@ export class PawaPayWebhookController {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
+    @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
+    private readonly personalInvoiceWebhookQueue: Queue,
   ) {}
 
   @ApiExcludeEndpoint()
@@ -56,9 +59,13 @@ export class PawaPayWebhookController {
     }
 
     // Deposit (contribution) — same downstream processing as a Paystack
-    // charge from here on, so it shares the existing WebhookProcessor/queue.
+    // charge from here on, so it shares the existing processors/queues,
+    // dispatched the same way WebhookController does for Paystack.
     const event = this.provider.parseWebhookEvent(request.rawBody);
-    await this.webhookQueue.add('process-webhook', event, {
+    const queue = event.personalInvoiceId
+      ? this.personalInvoiceWebhookQueue
+      : this.webhookQueue;
+    await queue.add('process-webhook', event, {
       attempts: 5,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: true,

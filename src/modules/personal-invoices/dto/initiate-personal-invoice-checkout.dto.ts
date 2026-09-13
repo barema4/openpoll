@@ -1,6 +1,8 @@
 import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
 import {
+  MOBILE_MONEY_PROVIDERS,
   PAYMENT_METHODS,
+  type MobileMoneyProvider,
   type PaymentMethod,
 } from '../../payments/providers/payment-provider.interface';
 
@@ -18,9 +20,14 @@ export class InitiatePersonalInvoiceCheckoutDto {
   @IsString()
   payerPhone?: string;
 
-  // Which channel the payer picked (card vs M-Pesa/mobile money) — see
-  // InitiateCheckoutDto for the full rationale.
+  // Kenya: card vs M-Pesa/mobile money (Paystack). Uganda: which network —
+  // required together with phoneNumber below, since PawaPay has no hosted
+  // page to collect it on. See InitiateCheckoutDto for the full rationale.
   @IsOptional()
-  @IsIn(PAYMENT_METHODS)
-  paymentMethod?: PaymentMethod;
+  @IsIn([...PAYMENT_METHODS, ...MOBILE_MONEY_PROVIDERS])
+  paymentMethod?: PaymentMethod | MobileMoneyProvider;
+
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
 }

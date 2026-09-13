@@ -5,7 +5,7 @@ import {
 } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
-import type { PaymentProvider } from '../payments/providers/payment-provider.interface';
+import type { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import type { Job } from 'bullmq';
 
 describe('PersonalInvoiceWebhookProcessor', () => {
@@ -30,7 +30,12 @@ describe('PersonalInvoiceWebhookProcessor', () => {
       findUnique: jest.fn().mockResolvedValue(existingTransaction),
       create: jest.fn().mockResolvedValue({ id: 'tx-1' }),
     };
-    const personalInvoice = { updateMany: jest.fn() };
+    const personalInvoice = {
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest
+        .fn()
+        .mockResolvedValue({ issuer: { country: 'KENYA' } }),
+    };
     const prisma = {
       personalInvoiceTransaction,
       personalInvoice,
@@ -40,16 +45,22 @@ describe('PersonalInvoiceWebhookProcessor', () => {
     return { prisma, personalInvoiceTransaction, personalInvoice };
   }
 
+  function makeProviders(verifyTransaction: jest.Mock) {
+    return {
+      forCountry: jest.fn().mockReturnValue({ verifyTransaction }),
+    } as unknown as PaymentProviderRegistry;
+  }
+
   it('is a no-op when the providerReference has already been processed', async () => {
     const { prisma, personalInvoiceTransaction } = makePrismaMock({
       id: 'existing-tx',
     });
     const verifyTransaction = jest.fn();
-    const provider = { verifyTransaction } as unknown as PaymentProvider;
+    const providers = makeProviders(verifyTransaction);
     const processor = new PersonalInvoiceWebhookProcessor(
       prisma,
       audit,
-      provider,
+      providers,
     );
 
     await processor.process(makeJob());
@@ -64,11 +75,11 @@ describe('PersonalInvoiceWebhookProcessor', () => {
       status: TransactionStatus.FAILED,
       amountSettled: 500,
     });
-    const provider = { verifyTransaction } as unknown as PaymentProvider;
+    const providers = makeProviders(verifyTransaction);
     const processor = new PersonalInvoiceWebhookProcessor(
       prisma,
       audit,
-      provider,
+      providers,
     );
 
     await expect(processor.process(makeJob())).rejects.toThrow(
@@ -84,11 +95,11 @@ describe('PersonalInvoiceWebhookProcessor', () => {
       status: TransactionStatus.SUCCESS,
       amountSettled: 500,
     });
-    const provider = { verifyTransaction } as unknown as PaymentProvider;
+    const providers = makeProviders(verifyTransaction);
     const processor = new PersonalInvoiceWebhookProcessor(
       prisma,
       audit,
-      provider,
+      providers,
     );
 
     await processor.process(makeJob());
