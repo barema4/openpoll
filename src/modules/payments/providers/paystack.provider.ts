@@ -58,6 +58,18 @@ interface PaystackSubaccountResponse {
   data?: { subaccount_code: string };
 }
 
+interface PaystackBalanceResponse {
+  status: boolean;
+  message?: string;
+  data?: { currency: string; balance: number }[];
+}
+
+export interface ProviderBalance {
+  currency: string;
+  /** Major currency units. */
+  balance: number;
+}
+
 interface PaystackWebhookPayload {
   event: string;
   data?: {
@@ -146,6 +158,30 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
       amountSettled: body.data.amount / 100,
       currency: body.data.currency,
     };
+  }
+
+  // The platform's own main-account balance — used for reconciliation, not
+  // any charge/payout flow. Includes accumulated platform fees (routed here
+  // via transaction_charge) plus, as a known confound, the full charge
+  // amount for any org/user without a payout subaccount configured yet.
+  async getBalance(): Promise<ProviderBalance[]> {
+    const response = await fetch(`${PAYSTACK_BASE_URL}/balance`, {
+      headers: {
+        Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+      },
+    });
+
+    const body = (await response.json()) as PaystackBalanceResponse;
+    if (!response.ok || !body.status || !body.data) {
+      throw new BadGatewayException(
+        `Paystack balance check failed: ${body.message ?? response.statusText}`,
+      );
+    }
+
+    return body.data.map((entry) => ({
+      currency: entry.currency,
+      balance: entry.balance / 100,
+    }));
   }
 
   verifySignature(

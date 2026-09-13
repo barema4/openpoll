@@ -20,6 +20,7 @@ import { PersonalInvoicesModule } from './modules/personal-invoices/personal-inv
 import { UsersModule } from './modules/users/users.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { WithdrawalsModule } from './modules/withdrawals/withdrawals.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { WithdrawalsModule } from './modules/withdrawals/withdrawals.module';
     UsersModule,
     PayoutsModule,
     WithdrawalsModule,
+    ReconciliationModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -129,6 +129,34 @@ export class PawaPayProvider implements PaymentProvider {
     };
   }
 
+  // The platform's own merchant wallet balance — used for reconciliation, not
+  // any charge/payout flow. Confirmed against real PawaPay docs (unlike the
+  // deposit/callback shapes above, which are TODO'd for sandbox verification):
+  // GET /v2/wallet-balances, https://docs.pawapay.io/v2/api-reference/finances/wallet-balances.
+  async getBalance(
+    countryCode: string,
+  ): Promise<{ country: string; currency: string; balance: number }[]> {
+    const response = await fetch(
+      `${this.baseUrl}/wallet-balances?country=${encodeURIComponent(countryCode)}`,
+      { headers: { Authorization: `Bearer ${this.token}` } },
+    );
+
+    const body = (await response.json()) as {
+      balances?: { country: string; currency: string; balance: string }[];
+    };
+    if (!response.ok || !body.balances) {
+      throw new BadGatewayException(
+        `PawaPay wallet balance check failed for ${countryCode}`,
+      );
+    }
+
+    return body.balances.map((entry) => ({
+      country: entry.country,
+      currency: entry.currency,
+      balance: Number(entry.balance),
+    }));
+  }
+
   // Withdrawals only (Uganda) — no Paystack equivalent (its subaccount model
   // routes at charge time, nothing to explicitly pay out later), so this
   // isn't part of the shared PaymentProvider interface. Callers inject

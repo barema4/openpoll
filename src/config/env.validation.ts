@@ -57,6 +57,12 @@ export const envSchema = z.object({
   // signatures. Copy the current key from the PawaPay dashboard/docs — see
   // the TODO in pawapay.provider.ts about upgrading to live fetch-by-keyid.
   PAWAPAY_PUBLIC_KEY: z.string().optional(),
+
+  // Gates GET /reconciliation — there is no multi-admin/role system in this
+  // app, so the sole operator is identified by email rather than a new role.
+  // Optional so .env.test/CI never need it; unset means the route denies
+  // everyone (fail closed, not open).
+  PLATFORM_OPERATOR_EMAIL: z.string().email().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
