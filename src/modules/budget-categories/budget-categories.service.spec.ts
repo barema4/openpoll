@@ -131,3 +131,36 @@ describe('BudgetCategoriesService.update', () => {
     });
   });
 });
+
+describe('BudgetCategoriesService.remove', () => {
+  it('deletes the category and audit-logs its allocated funds at the time of deletion', async () => {
+    const recordAudit = jest.fn();
+    const audit = { record: recordAudit } as unknown as AuditService;
+    const deletedCategory = {
+      id: 'category-1',
+      eventId: 'event-1',
+      name: 'Venue',
+      allocatedFunds: { toString: () => '400' },
+    };
+    const deleteFn = jest.fn().mockResolvedValue(deletedCategory);
+    const prisma = {
+      budgetCategory: { delete: deleteFn },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    const result = await service.remove('user-1', 'category-1');
+
+    expect(deleteFn).toHaveBeenCalledWith({ where: { id: 'category-1' } });
+    expect(recordAudit).toHaveBeenCalledWith({
+      userId: 'user-1',
+      eventId: 'event-1',
+      action: 'BUDGET_CATEGORY_DELETED',
+      payload: {
+        budgetCategoryId: 'category-1',
+        name: 'Venue',
+        allocatedFunds: '400',
+      },
+    });
+    expect(result).toBe(deletedCategory);
+  });
+});

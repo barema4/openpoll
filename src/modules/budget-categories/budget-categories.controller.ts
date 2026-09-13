@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -57,6 +58,15 @@ export class BudgetCategoriesController {
   @Get()
   listForEvent(@Query('eventId') eventId: string) {
     return this.budgetCategoriesService.listForEvent(eventId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Delete(':budgetCategoryId')
+  remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('budgetCategoryId') budgetCategoryId: string,
+  ) {
+    return this.budgetCategoriesService.remove(user.id, budgetCategoryId);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)

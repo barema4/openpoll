@@ -40,6 +40,31 @@ export class BudgetCategoriesService {
     return this.prisma.budgetCategory.findMany({ where: { eventId } });
   }
 
+  // Cascades to the category's Allocation rows (schema-level onDelete:
+  // Cascade), which returns whatever was allocated to it back to the
+  // event's unallocated pool automatically — remaining is always computed
+  // fresh from BudgetCategory.allocatedFunds across the event, so there's
+  // nothing else to reconcile. Disbursements referencing this category are
+  // preserved with budgetCategoryId set to null (onDelete: SetNull).
+  async remove(userId: string, budgetCategoryId: string) {
+    const category = await this.prisma.budgetCategory.delete({
+      where: { id: budgetCategoryId },
+    });
+
+    await this.audit.record({
+      userId,
+      eventId: category.eventId,
+      action: 'BUDGET_CATEGORY_DELETED',
+      payload: {
+        budgetCategoryId,
+        name: category.name,
+        allocatedFunds: category.allocatedFunds.toString(),
+      },
+    });
+
+    return category;
+  }
+
   // Pool-based: an event's collected money is one fungible pool, and
   // allocating just moves part of the *event's remaining unallocated
   // balance* into a category — not a specific payment. Remaining is computed
