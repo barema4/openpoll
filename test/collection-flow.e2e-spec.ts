@@ -150,9 +150,9 @@ describe('Collection flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(txRes.body).toHaveLength(1);
-    expect(txRes.body[0].providerReference).toBe(providerReference);
-    expect(txRes.body[0].status).toBe('SUCCESS');
+    expect(txRes.body.data).toHaveLength(1);
+    expect(txRes.body.data[0].providerReference).toBe(providerReference);
+    expect(txRes.body.data[0].status).toBe('SUCCESS');
   }, 10000);
 
   it('rejects a webhook with an invalid signature', async () => {
@@ -202,7 +202,7 @@ describe('Collection flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(txRes.body).toHaveLength(1);
+    expect(txRes.body.data).toHaveLength(1);
   }, 10000);
 
   it('rejects unauthenticated access to a protected route', async () => {
@@ -371,7 +371,7 @@ describe('Partial payments (e2e)', () => {
       .get(`/transactions?eventId=${eventId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    const invoiceTxs = txRes.body.filter((t: any) => t.invoiceId === invoiceId);
+    const invoiceTxs = txRes.body.data.filter((t: any) => t.invoiceId === invoiceId);
     expect(invoiceTxs).toHaveLength(2);
 
     // Fully paid — checkout is rejected outright now.
@@ -399,7 +399,7 @@ describe('Partial payments (e2e)', () => {
         .get(`/transactions?eventId=${eventId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
-      linkTxs = txRes.body.filter((t: any) => t.invoiceId === invoiceId);
+      linkTxs = txRes.body.data.filter((t: any) => t.invoiceId === invoiceId);
       if (linkTxs.length >= 2) break;
       await new Promise((r) => setTimeout(r, 250));
     }

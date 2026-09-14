@@ -21,6 +21,9 @@ import {
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import type { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
+import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
+import { paginate } from '../../common/pagination.util';
+import { dayAfter } from '../../common/date-range.util';
 
 @Injectable()
 export class TransactionsService {
@@ -367,12 +370,50 @@ export class TransactionsService {
     });
   }
 
-  listForEvent(eventId: string) {
-    return this.prisma.transaction.findMany({
-      where: { eventId },
-      include: { disputes: true },
-      orderBy: { timestamp: 'desc' },
-    });
+  async listForEvent(query: ListTransactionsQueryDto) {
+    const {
+      eventId,
+      page = 1,
+      pageSize = 25,
+      search,
+      status,
+      paymentRail,
+      dateFrom,
+      dateTo,
+    } = query;
+    const where: Prisma.TransactionWhereInput = {
+      eventId,
+      ...(status && { status }),
+      ...(paymentRail && { paymentRail }),
+      ...((dateFrom || dateTo) && {
+        timestamp: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo && { lt: dayAfter(dateTo) }),
+        },
+      }),
+      ...(search && {
+        OR: [
+          { providerReference: { contains: search, mode: 'insensitive' } },
+          { note: { contains: search, mode: 'insensitive' } },
+          {
+            invoice: {
+              contributorName: { contains: search, mode: 'insensitive' },
+            },
+          },
+        ],
+      }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        include: { disputes: true },
+        orderBy: { timestamp: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+    return paginate(data, total, page, pageSize);
   }
 
   // Unauthenticated, keyed by the gateway's own reference (unguessable,

@@ -700,3 +700,96 @@ describe('TransactionsService.handleDisputeEvent', () => {
     expect(txUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe('TransactionsService.listForEvent', () => {
+  function makeService(findMany: jest.Mock, count: jest.Mock) {
+    const prisma = {
+      transaction: { findMany, count },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    return new TransactionsService(prisma, audit, paystack, pawapay, email);
+  }
+
+  it('paginates with the default page/pageSize and returns the envelope shape', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'txn-1' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const service = makeService(findMany, count);
+
+    const result = await service.listForEvent({ eventId: 'event-1' });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { eventId: 'event-1' },
+        skip: 0,
+        take: 25,
+        orderBy: { timestamp: 'desc' },
+      }),
+    );
+    expect(result).toEqual({
+      data: [{ id: 'txn-1' }],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+      totalPages: 1,
+    });
+  });
+
+  it('computes skip from page and pageSize', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({ eventId: 'event-1', page: 3, pageSize: 10 });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 20, take: 10 }),
+    );
+  });
+
+  it('filters by status, paymentRail, and date range', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({
+      eventId: 'event-1',
+      status: TransactionStatus.SUCCESS,
+      paymentRail: PaymentRail.MOBILE_MONEY,
+      dateFrom: '2026-01-01',
+      dateTo: '2026-01-31',
+    });
+
+    const where = (
+      findMany.mock.calls[0][0] as { where: Record<string, unknown> }
+    ).where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        eventId: 'event-1',
+        status: TransactionStatus.SUCCESS,
+        paymentRail: PaymentRail.MOBILE_MONEY,
+        timestamp: {
+          gte: new Date('2026-01-01'),
+          lt: new Date('2026-02-01'),
+        },
+      }),
+    );
+  });
+
+  it('searches provider reference, note, and the linked invoice contributor name', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({ eventId: 'event-1', search: 'jane' });
+
+    const where = (findMany.mock.calls[0][0] as { where: { OR: unknown[] } })
+      .where;
+    expect(where.OR).toEqual([
+      { providerReference: { contains: 'jane', mode: 'insensitive' } },
+      { note: { contains: 'jane', mode: 'insensitive' } },
+      {
+        invoice: { contributorName: { contains: 'jane', mode: 'insensitive' } },
+      },
+    ]);
+  });
+});

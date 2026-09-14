@@ -8,6 +8,7 @@ import type { CreateEventDto } from './dto/create-event.dto';
 import type { CreateQuickEventDto } from './dto/create-quick-event.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
+import { TransactionStatus } from '../../../generated/prisma/enums';
 import type { EventStatus } from '../../../generated/prisma/enums';
 
 @Injectable()
@@ -73,14 +74,27 @@ export class EventsService {
     });
   }
 
-  findOne(eventId: string) {
-    return this.prisma.event.findUniqueOrThrow({
-      where: { id: eventId },
-      include: {
-        budgetCategories: true,
-        organization: { select: { country: true } },
-      },
-    });
+  // totalReceived (sum of SUCCESS transactions) is computed here rather
+  // than left for the frontend to sum client-side, since the transactions
+  // list is paginated and no longer guaranteed to hold every row.
+  async findOne(eventId: string) {
+    const [event, receivedAggregate] = await Promise.all([
+      this.prisma.event.findUniqueOrThrow({
+        where: { id: eventId },
+        include: {
+          budgetCategories: true,
+          organization: { select: { country: true } },
+        },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { eventId, status: TransactionStatus.SUCCESS },
+        _sum: { amountSettled: true },
+      }),
+    ]);
+    return {
+      ...event,
+      totalReceived: receivedAggregate._sum.amountSettled ?? 0,
+    };
   }
 
   listForOrganization(organizationId: string) {

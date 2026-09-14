@@ -10,6 +10,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
+import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -31,8 +32,8 @@ export class TransactionsController {
   }
 
   @Get()
-  listForEvent(@Query('eventId') eventId: string) {
-    return this.transactionsService.listForEvent(eventId);
+  listForEvent(@Query() query: ListTransactionsQueryDto) {
+    return this.transactionsService.listForEvent(query);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)

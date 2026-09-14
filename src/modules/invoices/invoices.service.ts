@@ -14,6 +14,9 @@ import { buildInvoiceShareLinks } from './share-links.util';
 import { calculatePlatformFee } from '../payments/platform-fee.util';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { CreatePledgeDto } from './dto/create-pledge.dto';
+import type { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
+import { paginate } from '../../common/pagination.util';
+import { dayAfter } from '../../common/date-range.util';
 
 const DEFAULT_EXPIRY_DAYS = 30;
 
@@ -131,8 +134,58 @@ export class InvoicesService {
     });
   }
 
-  listForEvent(eventId: string) {
-    return this.prisma.invoice.findMany({ where: { eventId } });
+  // The one auto-created, non-expiring link every event gets on creation
+  // (see EventsService#create) — always the earliest permanent invoice.
+  // Surfaced separately from the paginated list below so the "your
+  // shareable link" card stays visible regardless of search/filter/page.
+  getPrimaryLink(eventId: string) {
+    return this.prisma.invoice.findFirst({
+      where: { eventId, expiresAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async listForEvent(query: ListInvoicesQueryDto) {
+    const {
+      eventId,
+      page = 1,
+      pageSize = 25,
+      search,
+      status,
+      source,
+      dateFrom,
+      dateTo,
+    } = query;
+    const primary = await this.getPrimaryLink(eventId);
+    const where: Prisma.InvoiceWhereInput = {
+      eventId,
+      ...(primary && { id: { not: primary.id } }),
+      ...(status && { status }),
+      ...(source && { source }),
+      ...((dateFrom || dateTo) && {
+        createdAt: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo && { lt: dayAfter(dateTo) }),
+        },
+      }),
+      ...(search && {
+        OR: [
+          { contributorName: { contains: search, mode: 'insensitive' } },
+          { contributorEmail: { contains: search, mode: 'insensitive' } },
+          { contributorPhone: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+    return paginate(data, total, page, pageSize);
   }
 
   async findByToken(secureToken: string) {

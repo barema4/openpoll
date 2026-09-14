@@ -263,3 +263,125 @@ describe('InvoicesService.getShareLinks', () => {
     );
   });
 });
+
+describe('InvoicesService.getPrimaryLink', () => {
+  it('returns the earliest permanent (non-expiring) invoice for the event', async () => {
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const config = { get: jest.fn() } as unknown as ConfigService;
+    const findFirst = jest.fn().mockResolvedValue({ id: 'inv-primary' });
+    const prisma = {
+      invoice: { findFirst },
+    } as unknown as PrismaService;
+    const service = new InvoicesService(prisma, audit, config);
+
+    const result = await service.getPrimaryLink('event-1');
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { eventId: 'event-1', expiresAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(result).toEqual({ id: 'inv-primary' });
+  });
+});
+
+describe('InvoicesService.listForEvent', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const config = { get: jest.fn() } as unknown as ConfigService;
+
+  function makeService(
+    findMany: jest.Mock,
+    count: jest.Mock,
+    findFirst: jest.Mock = jest.fn().mockResolvedValue(null),
+  ) {
+    const prisma = {
+      invoice: { findMany, count, findFirst },
+    } as unknown as PrismaService;
+    return new InvoicesService(prisma, audit, config);
+  }
+
+  it('excludes the primary (default) link from the paginated results', async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: 'inv-primary' });
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count, findFirst);
+
+    await service.listForEvent({ eventId: 'event-1' });
+
+    const where = (
+      findMany.mock.calls[0][0] as { where: Record<string, unknown> }
+    ).where;
+    expect(where).toEqual(
+      expect.objectContaining({ id: { not: 'inv-primary' } }),
+    );
+  });
+
+  it('does not filter by id when there is no primary link', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({ eventId: 'event-1' });
+
+    const where = (
+      findMany.mock.calls[0][0] as { where: Record<string, unknown> }
+    ).where;
+    expect(where.id).toBeUndefined();
+  });
+
+  it('paginates and returns the envelope shape', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'inv-1' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const service = makeService(findMany, count);
+
+    const result = await service.listForEvent({
+      eventId: 'event-1',
+      page: 2,
+      pageSize: 5,
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 5,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    expect(result).toEqual({
+      data: [{ id: 'inv-1' }],
+      total: 1,
+      page: 2,
+      pageSize: 5,
+      totalPages: 1,
+    });
+  });
+
+  it('filters by status, source, and searches contributor name/email/phone', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({
+      eventId: 'event-1',
+      status: InvoiceStatus.PAID,
+      source: InvoiceSource.PUBLIC_PLEDGE,
+      search: 'jane',
+    });
+
+    const where = (
+      findMany.mock.calls[0][0] as {
+        where: Record<string, unknown> & { OR: unknown[] };
+      }
+    ).where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        status: InvoiceStatus.PAID,
+        source: InvoiceSource.PUBLIC_PLEDGE,
+      }),
+    );
+    expect(where.OR).toEqual([
+      { contributorName: { contains: 'jane', mode: 'insensitive' } },
+      { contributorEmail: { contains: 'jane', mode: 'insensitive' } },
+      { contributorPhone: { contains: 'jane', mode: 'insensitive' } },
+    ]);
+  });
+});
