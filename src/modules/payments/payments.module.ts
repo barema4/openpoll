@@ -6,6 +6,7 @@ import { WebhookController } from './webhook.controller';
 import { PawaPayWebhookController } from './pawapay-webhook.controller';
 import { WebhookProcessor } from './webhook.processor';
 import { RefundWebhookProcessor } from './refund-webhook.processor';
+import { DisputeWebhookProcessor } from './dispute-webhook.processor';
 import { PaystackProvider } from './providers/paystack.provider';
 import { PawaPayProvider } from './providers/pawapay.provider';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
@@ -13,7 +14,11 @@ import {
   PAWAPAY_PROVIDER,
   PAYSTACK_PROVIDER,
 } from './providers/payment-provider.interface';
-import { WEBHOOK_QUEUE, REFUND_WEBHOOK_QUEUE } from './payments.constants';
+import {
+  WEBHOOK_QUEUE,
+  REFUND_WEBHOOK_QUEUE,
+  DISPUTE_WEBHOOK_QUEUE,
+} from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 import { TransactionsModule } from '../transactions/transactions.module';
 
@@ -23,6 +28,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
       { name: WEBHOOK_QUEUE },
       { name: PERSONAL_INVOICE_WEBHOOK_QUEUE },
       { name: REFUND_WEBHOOK_QUEUE },
+      { name: DISPUTE_WEBHOOK_QUEUE },
     ),
     // forwardRef: TransactionsModule needs the two providers from here (to
     // initiate a refund); the webhook controllers/processor here need
@@ -39,6 +45,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
     PaymentsService,
     WebhookProcessor,
     RefundWebhookProcessor,
+    DisputeWebhookProcessor,
     PaystackProvider,
     PawaPayProvider,
     PaymentProviderRegistry,

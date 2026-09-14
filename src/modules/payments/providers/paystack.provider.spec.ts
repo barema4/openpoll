@@ -121,4 +121,102 @@ describe('PaystackProvider', () => {
       expect(parsed.platformFeeAmount).toBeUndefined();
     });
   });
+
+  describe('isRefundEvent / parseRefundWebhookEvent', () => {
+    it('identifies a refund event and extracts its reference and outcome', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'refund.processed',
+          data: { id: 555, transaction_reference: 'ref_123' },
+        }),
+      );
+
+      expect(provider.isRefundEvent(rawBody)).toBe(true);
+      const parsed = provider.parseRefundWebhookEvent(rawBody);
+      expect(parsed.refundReference).toBe('555');
+      expect(parsed.transactionReference).toBe('ref_123');
+      expect(parsed.succeeded).toBe(true);
+    });
+
+    it('does not treat a charge event as a refund event', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(JSON.stringify({ event: 'charge.success' }));
+
+      expect(provider.isRefundEvent(rawBody)).toBe(false);
+    });
+
+    it('reports a failed refund as not succeeded', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'refund.failed',
+          data: { id: 555, transaction_reference: 'ref_123' },
+        }),
+      );
+
+      expect(provider.parseRefundWebhookEvent(rawBody).succeeded).toBe(false);
+    });
+  });
+
+  describe('isDisputeEvent / parseDisputeWebhookEvent', () => {
+    it('identifies a dispute event and extracts its fields', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'charge.dispute.create',
+          data: {
+            id: 42,
+            status: 'awaiting-merchant-feedback',
+            amount: 150000,
+            category: 'fraud',
+            transaction_reference: 'ref_123',
+          },
+        }),
+      );
+
+      expect(provider.isDisputeEvent(rawBody)).toBe(true);
+      const parsed = provider.parseDisputeWebhookEvent(rawBody);
+      expect(parsed.providerReference).toBe('42');
+      expect(parsed.transactionReference).toBe('ref_123');
+      expect(parsed.status).toBe('AWAITING_MERCHANT_FEEDBACK');
+      expect(parsed.amount).toBe(1500);
+      expect(parsed.reason).toBe('fraud');
+      expect(parsed.resolution).toBeNull();
+    });
+
+    it('does not treat a charge or refund event as a dispute event', () => {
+      const provider = makeProvider();
+      expect(
+        provider.isDisputeEvent(
+          Buffer.from(JSON.stringify({ event: 'charge.success' })),
+        ),
+      ).toBe(false);
+      expect(
+        provider.isDisputeEvent(
+          Buffer.from(JSON.stringify({ event: 'refund.processed' })),
+        ),
+      ).toBe(false);
+    });
+
+    it('maps a resolved dispute status and carries the resolution through', () => {
+      const provider = makeProvider();
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: 'charge.dispute.resolve',
+          data: {
+            id: 42,
+            status: 'resolved',
+            resolution: 'merchant-accepted',
+            amount: 150000,
+            transaction_reference: 'ref_123',
+          },
+        }),
+      );
+
+      const parsed = provider.parseDisputeWebhookEvent(rawBody);
+      expect(parsed.status).toBe('RESOLVED');
+      expect(parsed.resolution).toBe('merchant-accepted');
+    });
+  });
 });

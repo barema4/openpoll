@@ -1,18 +1,25 @@
 import { BadRequestException } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import {
+  DisputeStatus,
   InvoiceStatus,
+  OrgRole,
   PaymentRail,
   RefundStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
-import type { PaystackProvider } from '../payments/providers/paystack.provider';
+import type { EmailService } from '../../email/email.service';
+import type {
+  ParsedDisputeWebhookEvent,
+  PaystackProvider,
+} from '../payments/providers/paystack.provider';
 import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
 
 const paystack = {} as unknown as PaystackProvider;
 const pawapay = {} as unknown as PawaPayProvider;
+const email = { send: jest.fn() } as unknown as EmailService;
 
 describe('TransactionsService.recordManual', () => {
   it('creates a SUCCESS transaction tagged paymentRail: MANUAL and audit-logs it', async () => {
@@ -26,7 +33,13 @@ describe('TransactionsService.recordManual', () => {
     } as unknown as PrismaService;
     const recordAudit = jest.fn();
     const audit = { record: recordAudit } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     const result = await service.recordManual('user-1', {
       eventId: 'event-1',
@@ -79,7 +92,13 @@ describe('TransactionsService.getReceipt', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     const receipt = await service.getReceipt('ref-1');
 
@@ -125,6 +144,7 @@ describe('TransactionsService.refund', () => {
       audit,
       { initiateRefund } as unknown as PaystackProvider,
       pawapay,
+      email,
     );
 
     await service.refund('user-1', 'txn-1');
@@ -165,9 +185,13 @@ describe('TransactionsService.refund', () => {
     } as unknown as PrismaService;
     const initiateRefund = jest.fn().mockResolvedValue({ accepted: true });
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, {
-      initiateRefund,
-    } as unknown as PawaPayProvider);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      { initiateRefund } as unknown as PawaPayProvider,
+      email,
+    );
 
     await service.refund('user-1', 'txn-1');
 
@@ -213,6 +237,7 @@ describe('TransactionsService.refund', () => {
       audit,
       { initiateRefund } as unknown as PaystackProvider,
       pawapay,
+      email,
     );
 
     await service.refund('user-1', 'txn-1');
@@ -235,7 +260,13 @@ describe('TransactionsService.refund', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await expect(service.refund('user-1', 'txn-1')).rejects.toBeInstanceOf(
       BadRequestException,
@@ -250,7 +281,13 @@ describe('TransactionsService.refund', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await expect(service.refund('user-1', 'txn-1')).rejects.toBeInstanceOf(
       BadRequestException,
@@ -271,7 +308,13 @@ describe('TransactionsService.refund', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await expect(service.refund('user-1', 'txn-1')).rejects.toBeInstanceOf(
       BadRequestException,
@@ -318,7 +361,13 @@ describe('TransactionsService.completeRefund', () => {
     const refund = makeRefund();
     const { prisma, tx } = makePrisma(refund);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('ps_refund_1', true);
 
@@ -350,7 +399,13 @@ describe('TransactionsService.completeRefund', () => {
     });
     const { prisma, tx } = makePrisma(refund);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('ps_refund_1', true);
 
@@ -371,7 +426,13 @@ describe('TransactionsService.completeRefund', () => {
     });
     const { prisma, tx } = makePrisma(refund);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('ps_refund_1', true);
 
@@ -383,7 +444,13 @@ describe('TransactionsService.completeRefund', () => {
     const refund = makeRefund();
     const { prisma, tx } = makePrisma(refund);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('ps_refund_1', false, 'insufficient balance');
 
@@ -401,7 +468,13 @@ describe('TransactionsService.completeRefund', () => {
   it('is a no-op for an unknown providerReference', async () => {
     const { prisma, tx } = makePrisma(null);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('unknown-ref', true);
 
@@ -412,10 +485,218 @@ describe('TransactionsService.completeRefund', () => {
     const refund = makeRefund({ status: RefundStatus.COMPLETED });
     const { prisma, tx } = makePrisma(refund);
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new TransactionsService(prisma, audit, paystack, pawapay);
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
 
     await service.completeRefund('ps_refund_1', true);
 
     expect(tx.transaction.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransactionsService.handleDisputeEvent', () => {
+  function makeEvent(
+    overrides: Partial<ParsedDisputeWebhookEvent> = {},
+  ): ParsedDisputeWebhookEvent {
+    return {
+      providerReference: 'dispute-1',
+      transactionReference: 'ref-1',
+      status: DisputeStatus.AWAITING_MERCHANT_FEEDBACK,
+      resolution: null,
+      amount: 1000,
+      reason: null,
+      ...overrides,
+    };
+  }
+
+  function makeTransactionRecord(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'txn-1',
+      eventId: 'event-1',
+      status: TransactionStatus.SUCCESS,
+      amountSettled: '1000',
+      invoice: null,
+      event: { organizationId: 'org-1', title: 'Wedding' },
+      ...overrides,
+    };
+  }
+
+  function makePrisma(opts: {
+    existingDispute?: unknown;
+    transaction?: unknown;
+    admins?: unknown[];
+  }) {
+    const disputeUpsert = jest.fn().mockResolvedValue({ id: 'dispute-row-1' });
+    const membershipFindMany = jest.fn().mockResolvedValue(opts.admins ?? []);
+    const txUpdate = jest.fn();
+    const invoiceUpdate = jest.fn();
+    const tx = {
+      transaction: { update: txUpdate },
+      invoice: { update: invoiceUpdate },
+    };
+    const prisma = {
+      dispute: {
+        findUnique: jest.fn().mockResolvedValue(opts.existingDispute ?? null),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'dispute-row-1',
+          amount: '1000',
+          transaction: makeTransactionRecord(),
+        }),
+        upsert: disputeUpsert,
+      },
+      transaction: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(opts.transaction ?? makeTransactionRecord()),
+      },
+      organizationMembership: { findMany: membershipFindMany },
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
+    } as unknown as PrismaService;
+    return {
+      prisma,
+      disputeUpsert,
+      membershipFindMany,
+      txUpdate,
+      invoiceUpdate,
+    };
+  }
+
+  it('records a new dispute, audits it, and emails the org MAIN_ORGANIZER/TREASURER admins', async () => {
+    const admins = [
+      { user: { email: 'owner@example.com' } },
+      { user: { email: 'treasurer@example.com' } },
+    ];
+    const { prisma, membershipFindMany } = makePrisma({ admins });
+    const emailSend = jest.fn();
+    const recordAudit = jest.fn();
+    const service = new TransactionsService(
+      prisma,
+      { record: recordAudit } as unknown as AuditService,
+      paystack,
+      pawapay,
+      { send: emailSend } as unknown as EmailService,
+    );
+
+    await service.handleDisputeEvent(makeEvent());
+
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DISPUTE_OPENED' }),
+    );
+    expect(membershipFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          role: { in: [OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER] },
+        }) as unknown,
+      }),
+    );
+    expect(emailSend).toHaveBeenCalledTimes(2);
+    expect(emailSend).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'owner@example.com' }),
+    );
+  });
+
+  it('does not re-notify or re-audit-open a dispute that already exists (redelivered create/reminder)', async () => {
+    const { prisma } = makePrisma({
+      existingDispute: { id: 'dispute-row-1' },
+    });
+    const emailSend = jest.fn();
+    const recordAudit = jest.fn();
+    const service = new TransactionsService(
+      prisma,
+      { record: recordAudit } as unknown as AuditService,
+      paystack,
+      pawapay,
+      { send: emailSend } as unknown as EmailService,
+    );
+
+    await service.handleDisputeEvent(makeEvent());
+
+    expect(emailSend).not.toHaveBeenCalled();
+    expect(recordAudit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DISPUTE_OPENED' }),
+    );
+  });
+
+  it('reverses the transaction when a dispute resolves as merchant-accepted (lost)', async () => {
+    const { prisma, txUpdate } = makePrisma({
+      existingDispute: { id: 'dispute-row-1' },
+    });
+    const recordAudit = jest.fn();
+    const service = new TransactionsService(
+      prisma,
+      { record: recordAudit } as unknown as AuditService,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    await service.handleDisputeEvent(
+      makeEvent({
+        status: DisputeStatus.RESOLVED,
+        resolution: 'merchant-accepted',
+      }),
+    );
+
+    expect(txUpdate).toHaveBeenCalledWith({
+      where: { id: 'txn-1' },
+      data: { status: TransactionStatus.REFUNDED },
+    });
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DISPUTE_LOST' }),
+    );
+  });
+
+  it('does not reverse anything when a dispute resolves as declined (won)', async () => {
+    const { prisma, txUpdate } = makePrisma({
+      existingDispute: { id: 'dispute-row-1' },
+    });
+    const recordAudit = jest.fn();
+    const service = new TransactionsService(
+      prisma,
+      { record: recordAudit } as unknown as AuditService,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    await service.handleDisputeEvent(
+      makeEvent({ status: DisputeStatus.RESOLVED, resolution: 'declined' }),
+    );
+
+    expect(txUpdate).not.toHaveBeenCalled();
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DISPUTE_RESOLVED' }),
+    );
+  });
+
+  it('does not double-reverse a transaction that was already refunded through another path', async () => {
+    const { prisma, txUpdate } = makePrisma({
+      existingDispute: { id: 'dispute-row-1' },
+      transaction: makeTransactionRecord({
+        status: TransactionStatus.REFUNDED,
+      }),
+    });
+    const service = new TransactionsService(
+      prisma,
+      { record: jest.fn() } as unknown as AuditService,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    await service.handleDisputeEvent(
+      makeEvent({
+        status: DisputeStatus.RESOLVED,
+        resolution: 'merchant-accepted',
+      }),
+    );
+
+    expect(txUpdate).not.toHaveBeenCalled();
   });
 });

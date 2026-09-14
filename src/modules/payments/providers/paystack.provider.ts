@@ -2,6 +2,7 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
+  DisputeStatus,
   PaymentRail,
   TransactionStatus,
 } from '../../../../generated/prisma/enums';
@@ -112,6 +113,34 @@ export interface ParsedRefundWebhookEvent {
   refundReference: string;
   transactionReference: string;
   succeeded: boolean;
+}
+
+// TODO(verify against real Paystack sandbox): confirmed from public docs —
+// dispute status values (awaiting-merchant-feedback/awaiting-bank-feedback/
+// pending/resolved) and resolution values (merchant-accepted/declined) — but
+// the exact nesting of these fields inside the charge.dispute.* webhook body
+// specifically isn't shown in public docs (only the REST dispute-resource
+// shape is). Confirm before relying on this for production dispute handling.
+interface PaystackDisputeWebhookPayload {
+  event: string;
+  data?: {
+    id: number | string;
+    status?: string;
+    resolution?: string;
+    amount?: number;
+    category?: string;
+    transaction?: { reference?: string };
+    transaction_reference?: string;
+  };
+}
+
+export interface ParsedDisputeWebhookEvent {
+  providerReference: string;
+  transactionReference: string;
+  status: DisputeStatus;
+  resolution: string | null;
+  amount: number;
+  reason: string | null;
 }
 
 @Injectable()
@@ -269,6 +298,30 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
     };
   }
 
+  // Disputes (chargebacks) also land on this same webhook URL — checked
+  // alongside isRefundEvent, before parseWebhookEvent.
+  isDisputeEvent(rawBody: Buffer): boolean {
+    const payload = JSON.parse(rawBody.toString('utf8')) as { event?: string };
+    return !!payload.event?.startsWith('charge.dispute');
+  }
+
+  parseDisputeWebhookEvent(rawBody: Buffer): ParsedDisputeWebhookEvent {
+    const payload = JSON.parse(
+      rawBody.toString('utf8'),
+    ) as PaystackDisputeWebhookPayload;
+    const data = payload.data ?? { id: '' };
+
+    return {
+      providerReference: String(data.id),
+      transactionReference:
+        data.transaction_reference ?? data.transaction?.reference ?? '',
+      status: mapDisputeStatus(data.status),
+      resolution: data.resolution ?? null,
+      amount: (data.amount ?? 0) / 100,
+      reason: data.category ?? null,
+    };
+  }
+
   verifySignature(
     rawBody: Buffer,
     signatureHeader: string | undefined,
@@ -398,4 +451,18 @@ function mapChannel(channel?: string): PaymentRail {
   if (channel === 'mobile_money' || channel === 'ussd')
     return PaymentRail.MOBILE_MONEY;
   return PaymentRail.CARD;
+}
+
+function mapDisputeStatus(status?: string): DisputeStatus {
+  switch (status) {
+    case 'awaiting-bank-feedback':
+      return DisputeStatus.AWAITING_BANK_FEEDBACK;
+    case 'resolved':
+      return DisputeStatus.RESOLVED;
+    case 'pending':
+      return DisputeStatus.PENDING;
+    case 'awaiting-merchant-feedback':
+    default:
+      return DisputeStatus.AWAITING_MERCHANT_FEEDBACK;
+  }
 }

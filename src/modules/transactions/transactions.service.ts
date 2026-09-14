@@ -6,10 +6,15 @@ import {
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { EmailService } from '../../email/email.service';
 import { PaystackProvider } from '../payments/providers/paystack.provider';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
+import type { ParsedDisputeWebhookEvent } from '../payments/providers/paystack.provider';
+import type { Prisma } from '../../../generated/prisma/client';
 import {
+  DisputeStatus,
   InvoiceStatus,
+  OrgRole,
   OrganizationCountry,
   PaymentRail,
   RefundStatus,
@@ -24,6 +29,7 @@ export class TransactionsService {
     private readonly audit: AuditService,
     private readonly paystack: PaystackProvider,
     private readonly pawapay: PawaPayProvider,
+    private readonly email: EmailService,
   ) {}
 
   // For money received outside the app — cash, a direct mobile money
@@ -178,32 +184,12 @@ export class TransactionsService {
 
       if (!succeeded) return;
 
-      await tx.transaction.update({
-        where: { id: refund.transactionId },
-        data: { status: TransactionStatus.REFUNDED },
-      });
-
-      // Only single-use invoices track a running amountPaid total — mirrors
-      // the exact condition WebhookProcessor uses when incrementing it.
-      const invoice = refund.transaction.invoice;
-      if (invoice && invoice.expiresAt !== null) {
-        const newAmountPaid = Math.max(
-          Number(invoice.amountPaid) - Number(refund.transaction.amountSettled),
-          0,
-        );
-        const target = Number(invoice.amountRequested ?? 0);
-        const nextStatus =
-          newAmountPaid <= 0
-            ? InvoiceStatus.PENDING
-            : newAmountPaid >= target
-              ? InvoiceStatus.PAID
-              : InvoiceStatus.PARTIALLY_PAID;
-
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { amountPaid: newAmountPaid, status: nextStatus },
-        });
-      }
+      await this.reverseTransactionCredit(
+        tx,
+        refund.transactionId,
+        refund.transaction.amountSettled,
+        refund.transaction.invoice,
+      );
     });
 
     await this.audit.record({
@@ -217,15 +203,174 @@ export class TransactionsService {
     });
   }
 
+  // Shared by a completed refund and a dispute lost to the payer's bank —
+  // both mean the same thing for our books: the org no longer has this
+  // money. Flips the Transaction to REFUNDED (excluded from every
+  // SUCCESS-scoped query automatically) and, only for single-use invoices
+  // (mirrors the exact condition WebhookProcessor uses when incrementing
+  // amountPaid), reverses the running total and recomputes status.
+  private async reverseTransactionCredit(
+    tx: Prisma.TransactionClient,
+    transactionId: string,
+    amountSettled: Prisma.Decimal | number,
+    invoice: {
+      id: string;
+      amountPaid: Prisma.Decimal;
+      amountRequested: Prisma.Decimal | null;
+      expiresAt: Date | null;
+    } | null,
+  ) {
+    await tx.transaction.update({
+      where: { id: transactionId },
+      data: { status: TransactionStatus.REFUNDED },
+    });
+
+    if (invoice && invoice.expiresAt !== null) {
+      const newAmountPaid = Math.max(
+        Number(invoice.amountPaid) - Number(amountSettled),
+        0,
+      );
+      const target = Number(invoice.amountRequested ?? 0);
+      const nextStatus =
+        newAmountPaid <= 0
+          ? InvoiceStatus.PENDING
+          : newAmountPaid >= target
+            ? InvoiceStatus.PAID
+            : InvoiceStatus.PARTIALLY_PAID;
+
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { amountPaid: newAmountPaid, status: nextStatus },
+      });
+    }
+  }
+
+  // Handles every charge.dispute.* event for a given dispute (create,
+  // periodic reminders, and the final resolution) — called from
+  // DisputeWebhookProcessor. An open/pending dispute never touches the
+  // linked Transaction's status: the money hasn't moved yet, and a
+  // disputed-but-still-good transaction must stay in the budget pool /
+  // withdrawal balance. Only a resolution of 'merchant-accepted' (the
+  // chargeback stands) reverses the transaction, via the same shared logic
+  // a completed refund uses.
+  async handleDisputeEvent(event: ParsedDisputeWebhookEvent) {
+    const existing = await this.prisma.dispute.findUnique({
+      where: { providerReference: event.providerReference },
+    });
+    const isNew = !existing;
+
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { providerReference: event.transactionReference },
+      include: { invoice: true },
+    });
+
+    const dispute = await this.prisma.dispute.upsert({
+      where: { providerReference: event.providerReference },
+      create: {
+        providerReference: event.providerReference,
+        transactionId: transaction?.id,
+        status: event.status,
+        resolution: event.resolution,
+        amount: event.amount,
+        reason: event.reason,
+        resolvedAt: event.status === DisputeStatus.RESOLVED ? new Date() : null,
+      },
+      update: {
+        status: event.status,
+        resolution: event.resolution,
+        resolvedAt: event.status === DisputeStatus.RESOLVED ? new Date() : null,
+      },
+    });
+
+    if (isNew) {
+      await this.audit.record({
+        eventId: transaction?.eventId,
+        action: 'DISPUTE_OPENED',
+        payload: { disputeId: dispute.id, amount: event.amount },
+      });
+      await this.notifyDispute(dispute.id);
+    }
+
+    // Only reverse once, and only if the transaction hasn't already been
+    // refunded/reversed by some other path (e.g. an organizer-initiated
+    // refund for the same charge, or a redelivered resolve webhook).
+    if (
+      event.status === DisputeStatus.RESOLVED &&
+      event.resolution === 'merchant-accepted' &&
+      transaction &&
+      transaction.status === TransactionStatus.SUCCESS
+    ) {
+      await this.prisma.$transaction((tx) =>
+        this.reverseTransactionCredit(
+          tx,
+          transaction.id,
+          transaction.amountSettled,
+          transaction.invoice,
+        ),
+      );
+      await this.audit.record({
+        eventId: transaction.eventId,
+        action: 'DISPUTE_LOST',
+        payload: { disputeId: dispute.id, transactionId: transaction.id },
+      });
+    } else if (event.status === DisputeStatus.RESOLVED) {
+      await this.audit.record({
+        eventId: transaction?.eventId,
+        action: 'DISPUTE_RESOLVED',
+        payload: { disputeId: dispute.id, resolution: event.resolution },
+      });
+    }
+  }
+
+  // Emails the org's admins the moment a dispute opens — there's typically
+  // a response deadline, so this is the one actionable moment worth
+  // notifying on (reminders/resolution are audit-logged but don't re-notify).
+  private async notifyDispute(disputeId: string) {
+    const dispute = await this.prisma.dispute.findUniqueOrThrow({
+      where: { id: disputeId },
+      include: {
+        transaction: {
+          include: { event: { select: { organizationId: true, title: true } } },
+        },
+      },
+    });
+    const organizationId = dispute.transaction?.event.organizationId;
+    if (!organizationId) return; // No org to notify (orphaned/untracked transaction).
+
+    const admins = await this.prisma.organizationMembership.findMany({
+      where: {
+        organizationId,
+        role: { in: [OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER] },
+      },
+      include: { user: { select: { email: true } } },
+    });
+
+    const eventTitle = dispute.transaction?.event.title ?? 'an event';
+    const amount = Number(dispute.amount);
+    await Promise.all(
+      admins.map((admin) =>
+        this.email.send({
+          to: admin.user.email,
+          subject: `A payment to ${eventTitle} has been disputed`,
+          html: `<p>A payer's bank has disputed a charge of ${amount} to <strong>${eventTitle}</strong>.
+            Paystack usually requires a response within a few days — check your Paystack dashboard for the
+            deadline and details.</p>`,
+        }),
+      ),
+    );
+  }
+
   findOne(transactionId: string) {
     return this.prisma.transaction.findUniqueOrThrow({
       where: { id: transactionId },
+      include: { disputes: true },
     });
   }
 
   listForEvent(eventId: string) {
     return this.prisma.transaction.findMany({
       where: { eventId },
+      include: { disputes: true },
       orderBy: { timestamp: 'desc' },
     });
   }

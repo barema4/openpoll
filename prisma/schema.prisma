@@ -305,6 +305,7 @@ model Transaction {
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
   recordedBy  User?        @relation(fields: [recordedByUserId], references: [id], onDelete: SetNull)
   refund      Refund?
+  disputes    Dispute[]
 
   @@map("transactions")
 }
@@ -338,6 +339,40 @@ model Refund {
   requestedBy User        @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
 
   @@map("refunds")
+}
+
+// ---------------------------------------------------------------------------
+// Disputes / chargebacks — Kenya/Paystack only (mobile money has no
+// chargeback mechanism). Visibility only in this phase: no evidence
+// submission or accept/decline workflow. An open dispute never touches
+// Transaction.status — the money hasn't moved yet. Only a resolution of
+// "merchant-accepted" (the chargeback stands, money reversed) flips the
+// linked Transaction to REFUNDED, via the same reversal logic a real refund
+// uses (see TransactionsService's shared reversal helper).
+// ---------------------------------------------------------------------------
+
+enum DisputeStatus {
+  AWAITING_MERCHANT_FEEDBACK
+  AWAITING_BANK_FEEDBACK
+  PENDING
+  RESOLVED
+}
+
+model Dispute {
+  id                String        @id @default(uuid())
+  transactionId     String?       @map("transaction_id")
+  providerReference String        @unique @map("provider_reference")
+  status            DisputeStatus @default(PENDING)
+  // Raw Paystack value once resolved: 'merchant-accepted' | 'declined'.
+  resolution        String?
+  amount            Decimal       @db.Decimal(14, 2)
+  reason            String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  resolvedAt        DateTime?     @map("resolved_at")
+
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@map("disputes")
 }
 
 // ---------------------------------------------------------------------------

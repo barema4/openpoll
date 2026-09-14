@@ -13,7 +13,11 @@ import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import type { Request } from 'express';
 import { PaystackProvider } from './providers/paystack.provider';
-import { WEBHOOK_QUEUE, REFUND_WEBHOOK_QUEUE } from './payments.constants';
+import {
+  WEBHOOK_QUEUE,
+  REFUND_WEBHOOK_QUEUE,
+  DISPUTE_WEBHOOK_QUEUE,
+} from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 
 // Paystack webhook (Kenya only — Uganda/PawaPay has its own controller, see
@@ -33,6 +37,8 @@ export class WebhookController {
     private readonly personalInvoiceWebhookQueue: Queue,
     @InjectQueue(REFUND_WEBHOOK_QUEUE)
     private readonly refundWebhookQueue: Queue,
+    @InjectQueue(DISPUTE_WEBHOOK_QUEUE)
+    private readonly disputeWebhookQueue: Queue,
   ) {}
 
   // Machine-to-machine only (requires a real Paystack HMAC signature over
@@ -49,8 +55,8 @@ export class WebhookController {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    // Charge and refund events share this one webhook URL — checked before
-    // parseWebhookEvent, which assumes a charge-shaped payload.
+    // Charge, refund, and dispute events all share this one webhook URL —
+    // checked before parseWebhookEvent, which assumes a charge-shaped payload.
     if (this.provider.isRefundEvent(rawBody)) {
       const refundEvent = this.provider.parseRefundWebhookEvent(rawBody);
       await this.refundWebhookQueue.add('process-refund-webhook', refundEvent, {
@@ -58,6 +64,19 @@ export class WebhookController {
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: true,
       });
+      return { received: true };
+    }
+    if (this.provider.isDisputeEvent(rawBody)) {
+      const disputeEvent = this.provider.parseDisputeWebhookEvent(rawBody);
+      await this.disputeWebhookQueue.add(
+        'process-dispute-webhook',
+        disputeEvent,
+        {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2000 },
+          removeOnComplete: true,
+        },
+      );
       return { received: true };
     }
 
