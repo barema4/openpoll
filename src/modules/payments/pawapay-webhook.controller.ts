@@ -16,11 +16,13 @@ import { WEBHOOK_QUEUE } from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
+import { TransactionsService } from '../transactions/transactions.service';
 import { WithdrawalStatus } from '../../../generated/prisma/enums';
 
 interface PawaPayCallbackBody {
   depositId?: string;
   payoutId?: string;
+  refundId?: string;
   status: string;
   failureReason?: { failureMessage?: string };
 }
@@ -36,6 +38,7 @@ export class PawaPayWebhookController {
     private readonly provider: PawaPayProvider,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly transactions: TransactionsService,
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
     @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
     private readonly personalInvoiceWebhookQueue: Queue,
@@ -55,6 +58,14 @@ export class PawaPayWebhookController {
 
     if (body.payoutId) {
       await this.handlePayoutCallback(body);
+      return { received: true };
+    }
+    if (body.refundId) {
+      await this.transactions.completeRefund(
+        body.refundId,
+        body.status === 'COMPLETED',
+        body.failureReason?.failureMessage,
+      );
       return { received: true };
     }
 

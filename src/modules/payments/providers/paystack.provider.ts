@@ -86,6 +86,34 @@ interface PaystackWebhookPayload {
   };
 }
 
+interface PaystackRefundResponse {
+  status: boolean;
+  message?: string;
+  data?: { id: number; status: string };
+}
+
+// TODO(verify against real Paystack sandbox): the `refund.processed` /
+// `refund.failed` webhook body shape below (data.id as the refund id,
+// data.transaction_reference / data.transaction.reference for the original
+// charge) is inferred from Paystack's REST refund-object shape, since their
+// public docs don't show the webhook callback payload directly — confirm
+// before relying on this for production refund completion.
+interface PaystackRefundWebhookPayload {
+  event: string;
+  data?: {
+    id: number | string;
+    status?: string;
+    transaction_reference?: string;
+    transaction?: { reference?: string };
+  };
+}
+
+export interface ParsedRefundWebhookEvent {
+  refundReference: string;
+  transactionReference: string;
+  succeeded: boolean;
+}
+
 @Injectable()
 export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
   constructor(private readonly config: ConfigService) {}
@@ -182,6 +210,63 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
       currency: entry.currency,
       balance: entry.balance / 100,
     }));
+  }
+
+  // Full refund only (no `amount` field) — Paystack treats an omitted amount
+  // as "refund the entire original charge." Completion is async, delivered
+  // via the same webhook URL as charges (see parseRefundWebhookEvent).
+  async initiateRefund(params: {
+    transactionReference: string;
+    note?: string;
+  }): Promise<{
+    refundReference: string;
+    accepted: boolean;
+    failureMessage?: string;
+  }> {
+    const response = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transaction: params.transactionReference,
+        merchant_note: params.note,
+      }),
+    });
+
+    const body = (await response.json()) as PaystackRefundResponse;
+    if (!response.ok || !body.status || !body.data) {
+      return {
+        refundReference: '',
+        accepted: false,
+        failureMessage: body.message ?? response.statusText,
+      };
+    }
+
+    return { refundReference: String(body.data.id), accepted: true };
+  }
+
+  // Both charge and refund events land on the same webhook URL — checked
+  // before parseWebhookEvent (which assumes a charge-shaped payload) so the
+  // controller can route to the right queue/processor.
+  isRefundEvent(rawBody: Buffer): boolean {
+    const payload = JSON.parse(rawBody.toString('utf8')) as { event?: string };
+    return !!payload.event?.startsWith('refund.');
+  }
+
+  parseRefundWebhookEvent(rawBody: Buffer): ParsedRefundWebhookEvent {
+    const payload = JSON.parse(
+      rawBody.toString('utf8'),
+    ) as PaystackRefundWebhookPayload;
+    const data = payload.data ?? { id: '' };
+
+    return {
+      refundReference: String(data.id),
+      transactionReference:
+        data.transaction_reference ?? data.transaction?.reference ?? '',
+      succeeded: payload.event === 'refund.processed',
+    };
   }
 
   verifySignature(

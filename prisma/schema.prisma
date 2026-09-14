@@ -50,6 +50,7 @@ model User {
   allocations           Allocation[]
   requestedWithdrawals  Withdrawal[]
   manualTransactions    Transaction[]
+  requestedRefunds      Refund[]
 
   @@map("users")
 }
@@ -271,6 +272,10 @@ enum TransactionStatus {
   PENDING
   SUCCESS
   FAILED
+  // Set once a Refund against this transaction completes — deliberately
+  // excluded from every existing SUCCESS-scoped query (budget pool,
+  // withdrawal balance, receipt gating) with zero changes to those queries.
+  REFUNDED
 }
 
 model Transaction {
@@ -299,8 +304,40 @@ model Transaction {
   invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
   recordedBy  User?        @relation(fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  refund      Refund?
 
   @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Refunds — full refunds only (no partial). One per Transaction (enforced by
+// the unique transactionId below); a completed refund flips the linked
+// Transaction to REFUNDED, which every existing SUCCESS-scoped query already
+// excludes automatically. Mirrors Withdrawal's shape exactly.
+// ---------------------------------------------------------------------------
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Refund {
+  id                String       @id @default(uuid())
+  transactionId     String       @unique @map("transaction_id")
+  amount            Decimal      @db.Decimal(14, 2)
+  status            RefundStatus @default(PENDING)
+  providerReference String?      @unique @map("provider_reference")
+  requestedByUserId String       @map("requested_by_user_id")
+  failureReason     String?      @map("failure_reason")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  completedAt       DateTime?    @map("completed_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  requestedBy User        @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("refunds")
 }
 
 // ---------------------------------------------------------------------------

@@ -35,6 +35,29 @@ interface PawaPayPayoutResponse {
   failureReason?: { failureCode: string; failureMessage: string };
 }
 
+// Confirmed against real PawaPay docs: docs.pawapay.io/v2/api-reference/refunds/initiate-refund.
+interface PawaPayRefundResponse {
+  refundId: string;
+  status: 'ACCEPTED' | 'REJECTED' | 'DUPLICATE_IGNORED';
+  failureReason?: { failureCode: string; failureMessage: string };
+}
+
+// TODO(verify against real PawaPay sandbox): the refund-callback body shape
+// isn't shown directly in PawaPay's public docs — inferred from their
+// check-refund-status response shape (same refundId/status/failureReason
+// fields), confirm before relying on this for production refund completion.
+interface PawaPayRefundCallbackBody {
+  refundId: string;
+  status:
+    | 'ACCEPTED'
+    | 'ENQUEUED'
+    | 'PROCESSING'
+    | 'IN_RECONCILIATION'
+    | 'COMPLETED'
+    | 'FAILED';
+  failureReason?: { failureCode: string; failureMessage: string };
+}
+
 interface PawaPayDepositData {
   depositId: string;
   status:
@@ -196,6 +219,56 @@ export class PawaPayProvider implements PaymentProvider {
     return {
       payoutId: body.payoutId ?? params.payoutId,
       accepted: response.ok && body.status === 'ACCEPTED',
+      failureMessage: body.failureReason?.failureMessage,
+    };
+  }
+
+  // Full refund only (no partial) — amount is the gross amount originally
+  // charged (base + platform fee), always required by PawaPay's API unlike
+  // Paystack's "omit for full refund" convention. Idempotent on refundId.
+  async initiateRefund(params: {
+    refundId: string;
+    depositId: string;
+    amount: number;
+    currency: string;
+  }): Promise<{
+    refundId: string;
+    accepted: boolean;
+    failureMessage?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/refunds`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        refundId: params.refundId,
+        depositId: params.depositId,
+        amount: String(params.amount),
+        currency: params.currency,
+      }),
+    });
+
+    const body = (await response.json()) as PawaPayRefundResponse;
+    return {
+      refundId: body.refundId ?? params.refundId,
+      accepted: response.ok && body.status === 'ACCEPTED',
+      failureMessage: body.failureReason?.failureMessage,
+    };
+  }
+
+  parseRefundCallback(rawBody: Buffer): {
+    refundReference: string;
+    succeeded: boolean;
+    failureMessage?: string;
+  } {
+    const body = JSON.parse(
+      rawBody.toString('utf8'),
+    ) as PawaPayRefundCallbackBody;
+    return {
+      refundReference: body.refundId,
+      succeeded: body.status === 'COMPLETED',
       failureMessage: body.failureReason?.failureMessage,
     };
   }

@@ -13,7 +13,7 @@ import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import type { Request } from 'express';
 import { PaystackProvider } from './providers/paystack.provider';
-import { WEBHOOK_QUEUE } from './payments.constants';
+import { WEBHOOK_QUEUE, REFUND_WEBHOOK_QUEUE } from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 
 // Paystack webhook (Kenya only — Uganda/PawaPay has its own controller, see
@@ -31,6 +31,8 @@ export class WebhookController {
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
     @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
     private readonly personalInvoiceWebhookQueue: Queue,
+    @InjectQueue(REFUND_WEBHOOK_QUEUE)
+    private readonly refundWebhookQueue: Queue,
   ) {}
 
   // Machine-to-machine only (requires a real Paystack HMAC signature over
@@ -45,6 +47,18 @@ export class WebhookController {
     const rawBody = request.rawBody;
     if (!rawBody || !this.provider.verifySignature(rawBody, signature)) {
       throw new BadRequestException('Invalid webhook signature');
+    }
+
+    // Charge and refund events share this one webhook URL — checked before
+    // parseWebhookEvent, which assumes a charge-shaped payload.
+    if (this.provider.isRefundEvent(rawBody)) {
+      const refundEvent = this.provider.parseRefundWebhookEvent(rawBody);
+      await this.refundWebhookQueue.add('process-refund-webhook', refundEvent, {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: true,
+      });
+      return { received: true };
     }
 
     const event = this.provider.parseWebhookEvent(rawBody);

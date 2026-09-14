@@ -43,4 +43,13 @@ export class TransactionsController {
   ) {
     return this.transactionsService.recordManual(user.id, dto);
   }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Post(':transactionId/refund')
+  refund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('transactionId') transactionId: string,
+  ) {
+    return this.transactionsService.refund(user.id, transactionId);
+  }
 }
