@@ -374,7 +374,7 @@ export class TransactionsService {
     const {
       eventId,
       page = 1,
-      pageSize = 25,
+      pageSize = 10,
       search,
       status,
       paymentRail,

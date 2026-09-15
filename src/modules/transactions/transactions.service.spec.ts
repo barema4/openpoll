@@ -721,7 +721,7 @@ describe('TransactionsService.listForEvent', () => {
       expect.objectContaining({
         where: { eventId: 'event-1' },
         skip: 0,
-        take: 25,
+        take: 10,
         orderBy: { timestamp: 'desc' },
       }),
     );
@@ -729,7 +729,7 @@ describe('TransactionsService.listForEvent', () => {
       data: [{ id: 'txn-1' }],
       total: 1,
       page: 1,
-      pageSize: 25,
+      pageSize: 10,
       totalPages: 1,
     });
   });

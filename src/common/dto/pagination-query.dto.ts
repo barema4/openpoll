@@ -13,5 +13,5 @@ export class PaginationQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  pageSize?: number = 25;
+  pageSize?: number = 10;
 }

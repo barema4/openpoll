@@ -149,7 +149,7 @@ export class InvoicesService {
     const {
       eventId,
       page = 1,
-      pageSize = 25,
+      pageSize = 10,
       search,
       status,
       source,

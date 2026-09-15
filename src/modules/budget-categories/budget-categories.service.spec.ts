@@ -153,13 +153,13 @@ describe('BudgetCategoriesService.listForEvent', () => {
       where: { eventId: 'event-1' },
       orderBy: { createdAt: 'asc' },
       skip: 0,
-      take: 25,
+      take: 10,
     });
     expect(result).toEqual({
       data: [{ id: 'cat-1' }],
       total: 1,
       page: 1,
-      pageSize: 25,
+      pageSize: 10,
       totalPages: 1,
     });
   });

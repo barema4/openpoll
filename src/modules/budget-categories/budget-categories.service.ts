@@ -39,7 +39,7 @@ export class BudgetCategoriesService {
   }
 
   async listForEvent(query: ListBudgetCategoriesQueryDto) {
-    const { eventId, page = 1, pageSize = 25 } = query;
+    const { eventId, page = 1, pageSize = 10 } = query;
     const where = { eventId };
     const [data, total] = await Promise.all([
       this.prisma.budgetCategory.findMany({
