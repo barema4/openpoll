@@ -96,17 +96,32 @@ describe('EventsService.findOne', () => {
   const invoices = {} as unknown as InvoicesService;
   const organizations = {} as unknown as OrganizationsService;
 
-  it('includes totalReceived, summed from SUCCESS transactions only', async () => {
-    const findUniqueOrThrow = jest
-      .fn()
-      .mockResolvedValue({ id: 'event-1', title: 'Fundraiser' });
-    const aggregate = jest
-      .fn()
-      .mockResolvedValue({ _sum: { amountSettled: 1500 } });
+  function makePrisma(opts: {
+    totalReceived?: number | null;
+    totalAllocated?: number | null;
+  }) {
+    const transactionAggregate = jest.fn().mockResolvedValue({
+      _sum: { amountSettled: opts.totalReceived ?? null },
+    });
+    const budgetCategoryAggregate = jest.fn().mockResolvedValue({
+      _sum: { allocatedFunds: opts.totalAllocated ?? null },
+    });
     const prisma = {
-      event: { findUniqueOrThrow },
-      transaction: { aggregate },
+      event: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: 'event-1', title: 'Fundraiser' }),
+      },
+      transaction: { aggregate: transactionAggregate },
+      budgetCategory: { aggregate: budgetCategoryAggregate },
     } as unknown as PrismaService;
+    return { prisma, transactionAggregate, budgetCategoryAggregate };
+  }
+
+  it('includes totalReceived, summed from SUCCESS transactions only', async () => {
+    const { prisma, transactionAggregate } = makePrisma({
+      totalReceived: 1500,
+    });
     const service = new EventsService(
       prisma,
       audit,
@@ -117,24 +132,39 @@ describe('EventsService.findOne', () => {
 
     const result = await service.findOne('event-1');
 
-    expect(aggregate).toHaveBeenCalledWith({
+    expect(transactionAggregate).toHaveBeenCalledWith({
       where: { eventId: 'event-1', status: TransactionStatus.SUCCESS },
       _sum: { amountSettled: true },
     });
     expect(result.totalReceived).toBe(1500);
   });
 
-  it('defaults totalReceived to 0 when there are no SUCCESS transactions yet', async () => {
-    const findUniqueOrThrow = jest
-      .fn()
-      .mockResolvedValue({ id: 'event-1', title: 'Fundraiser' });
-    const aggregate = jest
-      .fn()
-      .mockResolvedValue({ _sum: { amountSettled: null } });
-    const prisma = {
-      event: { findUniqueOrThrow },
-      transaction: { aggregate },
-    } as unknown as PrismaService;
+  it('includes totalAllocated, summed across every budget category', async () => {
+    const { prisma, budgetCategoryAggregate } = makePrisma({
+      totalAllocated: 900,
+    });
+    const service = new EventsService(
+      prisma,
+      audit,
+      payouts,
+      invoices,
+      organizations,
+    );
+
+    const result = await service.findOne('event-1');
+
+    expect(budgetCategoryAggregate).toHaveBeenCalledWith({
+      where: { eventId: 'event-1' },
+      _sum: { allocatedFunds: true },
+    });
+    expect(result.totalAllocated).toBe(900);
+  });
+
+  it('defaults totalReceived and totalAllocated to 0 when there is nothing yet', async () => {
+    const { prisma } = makePrisma({
+      totalReceived: null,
+      totalAllocated: null,
+    });
     const service = new EventsService(
       prisma,
       audit,
@@ -146,5 +176,6 @@ describe('EventsService.findOne', () => {
     const result = await service.findOne('event-1');
 
     expect(result.totalReceived).toBe(0);
+    expect(result.totalAllocated).toBe(0);
   });
 });

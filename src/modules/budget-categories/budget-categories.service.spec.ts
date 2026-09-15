@@ -132,6 +132,51 @@ describe('BudgetCategoriesService.update', () => {
   });
 });
 
+describe('BudgetCategoriesService.listForEvent', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+
+  function makeService(findMany: jest.Mock, count: jest.Mock) {
+    const prisma = {
+      budgetCategory: { findMany, count },
+    } as unknown as PrismaService;
+    return new BudgetCategoriesService(prisma, audit);
+  }
+
+  it('paginates with the default page/pageSize, ordered oldest-first', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'cat-1' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const service = makeService(findMany, count);
+
+    const result = await service.listForEvent({ eventId: 'event-1' });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { eventId: 'event-1' },
+      orderBy: { createdAt: 'asc' },
+      skip: 0,
+      take: 25,
+    });
+    expect(result).toEqual({
+      data: [{ id: 'cat-1' }],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+      totalPages: 1,
+    });
+  });
+
+  it('computes skip from page and pageSize', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listForEvent({ eventId: 'event-1', page: 3, pageSize: 10 });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 20, take: 10 }),
+    );
+  });
+});
+
 describe('BudgetCategoriesService.remove', () => {
   it('deletes the category and audit-logs its allocated funds at the time of deletion', async () => {
     const recordAudit = jest.fn();

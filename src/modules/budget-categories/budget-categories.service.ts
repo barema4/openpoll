@@ -5,6 +5,8 @@ import { TransactionStatus } from '../../../generated/prisma/enums';
 import type { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import type { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
 import type { AllocateBudgetDto } from './dto/allocate-budget.dto';
+import type { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
+import { paginate } from '../../common/pagination.util';
 
 @Injectable()
 export class BudgetCategoriesService {
@@ -36,8 +38,19 @@ export class BudgetCategoriesService {
     });
   }
 
-  listForEvent(eventId: string) {
-    return this.prisma.budgetCategory.findMany({ where: { eventId } });
+  async listForEvent(query: ListBudgetCategoriesQueryDto) {
+    const { eventId, page = 1, pageSize = 25 } = query;
+    const where = { eventId };
+    const [data, total] = await Promise.all([
+      this.prisma.budgetCategory.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.budgetCategory.count({ where }),
+    ]);
+    return paginate(data, total, page, pageSize);
   }
 
   // Cascades to the category's Allocation rows (schema-level onDelete:

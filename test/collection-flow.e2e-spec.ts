@@ -371,7 +371,9 @@ describe('Partial payments (e2e)', () => {
       .get(`/transactions?eventId=${eventId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    const invoiceTxs = txRes.body.data.filter((t: any) => t.invoiceId === invoiceId);
+    const invoiceTxs = txRes.body.data.filter(
+      (t: any) => t.invoiceId === invoiceId,
+    );
     expect(invoiceTxs).toHaveLength(2);
 
     // Fully paid — checkout is rejected outright now.

@@ -14,6 +14,7 @@ import { BudgetCategoriesService } from './budget-categories.service';
 import { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
 import { AllocateBudgetDto } from './dto/allocate-budget.dto';
+import { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -56,8 +57,8 @@ export class BudgetCategoriesController {
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get()
-  listForEvent(@Query('eventId') eventId: string) {
-    return this.budgetCategoriesService.listForEvent(eventId);
+  listForEvent(@Query() query: ListBudgetCategoriesQueryDto) {
+    return this.budgetCategoriesService.listForEvent(query);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)

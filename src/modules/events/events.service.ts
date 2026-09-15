@@ -74,15 +74,14 @@ export class EventsService {
     });
   }
 
-  // totalReceived (sum of SUCCESS transactions) is computed here rather
-  // than left for the frontend to sum client-side, since the transactions
-  // list is paginated and no longer guaranteed to hold every row.
+  // totalReceived/totalAllocated are computed here rather than left for the
+  // frontend to sum client-side, since both the transactions and budget
+  // category lists are paginated and no longer guaranteed to hold every row.
   async findOne(eventId: string) {
-    const [event, receivedAggregate] = await Promise.all([
+    const [event, receivedAggregate, allocatedAggregate] = await Promise.all([
       this.prisma.event.findUniqueOrThrow({
         where: { id: eventId },
         include: {
-          budgetCategories: true,
           organization: { select: { country: true } },
         },
       }),
@@ -90,10 +89,15 @@ export class EventsService {
         where: { eventId, status: TransactionStatus.SUCCESS },
         _sum: { amountSettled: true },
       }),
+      this.prisma.budgetCategory.aggregate({
+        where: { eventId },
+        _sum: { allocatedFunds: true },
+      }),
     ]);
     return {
       ...event,
       totalReceived: receivedAggregate._sum.amountSettled ?? 0,
+      totalAllocated: allocatedAggregate._sum.allocatedFunds ?? 0,
     };
   }
 
