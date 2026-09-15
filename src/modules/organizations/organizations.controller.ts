@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -19,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrgRole } from '../../../generated/prisma/enums';
 import { AuditService } from '../../audit/audit.service';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user.type';
 
 @ApiTags('organizations')
@@ -60,8 +62,11 @@ export class OrganizationsController {
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
   @Get(':organizationId/audit-log')
-  getAuditLog(@Param('organizationId') organizationId: string) {
-    return this.auditService.findForOrganization(organizationId);
+  getAuditLog(
+    @Param('organizationId') organizationId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.auditService.findForOrganization(organizationId, query);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER)
