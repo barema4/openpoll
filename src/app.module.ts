@@ -14,6 +14,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { EventsModule } from './modules/events/events.module';
 import { BudgetCategoriesModule } from './modules/budget-categories/budget-categories.module';
 import { BudgetApprovalsModule } from './modules/budget-approvals/budget-approvals.module';
+import { VendorsModule } from './modules/vendors/vendors.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
@@ -59,6 +60,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     EventsModule,
     BudgetCategoriesModule,
     BudgetApprovalsModule,
+    VendorsModule,
     InvoicesModule,
     PaymentsModule,
     TransactionsModule,

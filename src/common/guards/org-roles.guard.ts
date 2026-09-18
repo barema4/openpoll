@@ -123,6 +123,15 @@ export class OrgRolesGuard implements CanActivate {
       return event?.organizationId ?? null;
     }
 
+    const vendorId = pickId(params.vendorId, body.vendorId, query.vendorId);
+    if (vendorId) {
+      const vendor = await this.prisma.vendor.findUnique({
+        where: { id: vendorId },
+        select: { organizationId: true },
+      });
+      return vendor?.organizationId ?? null;
+    }
+
     return null;
   }
 }
