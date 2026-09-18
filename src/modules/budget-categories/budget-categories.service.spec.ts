@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { BudgetCategoriesService } from './budget-categories.service';
+import { BudgetApprovalStatus } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 
@@ -23,6 +24,9 @@ describe('BudgetCategoriesService.allocate', () => {
         update: jest
           .fn()
           .mockResolvedValue({ id: budgetCategoryId, allocatedFunds: 0 }),
+      },
+      budgetApproval: {
+        findUnique: jest.fn().mockResolvedValue(null),
       },
       transaction: {
         aggregate: jest.fn().mockResolvedValue({
@@ -112,7 +116,13 @@ describe('BudgetCategoriesService.update', () => {
       name: 'Venue',
       estimatedCost: 50000,
     });
-    const prisma = { budgetCategory: { update } } as unknown as PrismaService;
+    const findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ eventId: 'event-1' });
+    const prisma = {
+      budgetCategory: { update, findUniqueOrThrow },
+      budgetApproval: { findUnique: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
     const service = new BudgetCategoriesService(prisma, audit);
 
     const result = await service.update('category-1', {
@@ -188,8 +198,12 @@ describe('BudgetCategoriesService.remove', () => {
       allocatedFunds: { toString: () => '400' },
     };
     const deleteFn = jest.fn().mockResolvedValue(deletedCategory);
+    const findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ eventId: 'event-1' });
     const prisma = {
-      budgetCategory: { delete: deleteFn },
+      budgetCategory: { delete: deleteFn, findUniqueOrThrow },
+      budgetApproval: { findUnique: jest.fn().mockResolvedValue(null) },
     } as unknown as PrismaService;
     const service = new BudgetCategoriesService(prisma, audit);
 
@@ -207,5 +221,106 @@ describe('BudgetCategoriesService.remove', () => {
       },
     });
     expect(result).toBe(deletedCategory);
+  });
+});
+
+describe('BudgetCategoriesService — locked while pending/approved/funded', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+
+  function makePrisma(status: BudgetApprovalStatus) {
+    return {
+      budgetApproval: {
+        findUnique: jest.fn().mockResolvedValue({ status }),
+      },
+      budgetCategory: {
+        create: jest.fn(),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ eventId: 'event-1' }),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
+    } as unknown as PrismaService;
+  }
+
+  it.each([
+    BudgetApprovalStatus.SUBMITTED,
+    BudgetApprovalStatus.APPROVED,
+    BudgetApprovalStatus.FUNDED,
+  ])('rejects create() while the budget is %s', async (status) => {
+    const prisma = makePrisma(status);
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.create('user-1', { eventId: 'event-1', name: 'Venue' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects update() while the budget is SUBMITTED', async () => {
+    const prisma = makePrisma(BudgetApprovalStatus.SUBMITTED);
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.update('category-1', { name: 'Venue' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects remove() while the budget is SUBMITTED', async () => {
+    const prisma = makePrisma(BudgetApprovalStatus.SUBMITTED);
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(service.remove('user-1', 'category-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rejects allocate() while the budget is SUBMITTED', async () => {
+    const tx = {
+      budgetCategory: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: 'category-1', eventId: 'event-1' }),
+      },
+      budgetApproval: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ status: BudgetApprovalStatus.SUBMITTED }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.allocate('user-1', 'category-1', { amount: 100 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([BudgetApprovalStatus.DRAFT, BudgetApprovalStatus.DECLINED])(
+    'allows create() while the budget is %s',
+    async (status) => {
+      const prisma = makePrisma(status);
+      (prisma.budgetCategory.create as jest.Mock).mockResolvedValue({
+        id: 'category-1',
+      });
+      const service = new BudgetCategoriesService(prisma, audit);
+
+      await expect(
+        service.create('user-1', { eventId: 'event-1', name: 'Venue' }),
+      ).resolves.toEqual({ id: 'category-1' });
+    },
+  );
+
+  it('allows create() when no BudgetApproval row exists yet (never submitted)', async () => {
+    const prisma = {
+      budgetApproval: { findUnique: jest.fn().mockResolvedValue(null) },
+      budgetCategory: {
+        create: jest.fn().mockResolvedValue({ id: 'category-1' }),
+      },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.create('user-1', { eventId: 'event-1', name: 'Venue' }),
+    ).resolves.toEqual({ id: 'category-1' });
   });
 });

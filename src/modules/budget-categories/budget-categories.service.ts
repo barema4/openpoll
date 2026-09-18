@@ -1,12 +1,20 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
-import { TransactionStatus } from '../../../generated/prisma/enums';
+import {
+  BudgetApprovalStatus,
+  TransactionStatus,
+} from '../../../generated/prisma/enums';
 import type { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import type { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
 import type { AllocateBudgetDto } from './dto/allocate-budget.dto';
 import type { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
 import { paginate } from '../../common/pagination.util';
+
+const EDITABLE_STATUSES: BudgetApprovalStatus[] = [
+  BudgetApprovalStatus.DRAFT,
+  BudgetApprovalStatus.DECLINED,
+];
 
 @Injectable()
 export class BudgetCategoriesService {
@@ -15,7 +23,22 @@ export class BudgetCategoriesService {
     private readonly audit: AuditService,
   ) {}
 
-  create(userId: string, dto: CreateBudgetCategoryDto) {
+  // No BudgetApproval row yet means the budget has never been submitted
+  // (still effectively DRAFT) — only a row with a non-editable status
+  // actually blocks the mutation.
+  private async assertBudgetEditable(eventId: string) {
+    const approval = await this.prisma.budgetApproval.findUnique({
+      where: { eventId },
+    });
+    if (approval && !EDITABLE_STATUSES.includes(approval.status)) {
+      throw new BadRequestException(
+        "This event's budget is pending approval or already approved/funded — decline it first to make changes",
+      );
+    }
+  }
+
+  async create(userId: string, dto: CreateBudgetCategoryDto) {
+    await this.assertBudgetEditable(dto.eventId);
     return this.prisma.budgetCategory.create({
       data: {
         eventId: dto.eventId,
@@ -25,7 +48,12 @@ export class BudgetCategoriesService {
     });
   }
 
-  update(budgetCategoryId: string, dto: UpdateBudgetCategoryDto) {
+  async update(budgetCategoryId: string, dto: UpdateBudgetCategoryDto) {
+    const category = await this.prisma.budgetCategory.findUniqueOrThrow({
+      where: { id: budgetCategoryId },
+      select: { eventId: true },
+    });
+    await this.assertBudgetEditable(category.eventId);
     return this.prisma.budgetCategory.update({
       where: { id: budgetCategoryId },
       data: { name: dto.name, estimatedCost: dto.estimatedCost },
@@ -60,6 +88,12 @@ export class BudgetCategoriesService {
   // nothing else to reconcile. Disbursements referencing this category are
   // preserved with budgetCategoryId set to null (onDelete: SetNull).
   async remove(userId: string, budgetCategoryId: string) {
+    const existing = await this.prisma.budgetCategory.findUniqueOrThrow({
+      where: { id: budgetCategoryId },
+      select: { eventId: true },
+    });
+    await this.assertBudgetEditable(existing.eventId);
+
     const category = await this.prisma.budgetCategory.delete({
       where: { id: budgetCategoryId },
     });
@@ -93,6 +127,15 @@ export class BudgetCategoriesService {
       const category = await tx.budgetCategory.findUniqueOrThrow({
         where: { id: budgetCategoryId },
       });
+
+      const approval = await tx.budgetApproval.findUnique({
+        where: { eventId: category.eventId },
+      });
+      if (approval && !EDITABLE_STATUSES.includes(approval.status)) {
+        throw new BadRequestException(
+          "This event's budget is pending approval or already approved/funded — decline it first to make changes",
+        );
+      }
 
       const [receivedAgg, allocatedAgg] = await Promise.all([
         tx.transaction.aggregate({
