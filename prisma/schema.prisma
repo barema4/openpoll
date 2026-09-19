@@ -335,9 +335,11 @@ model Transaction {
   // Set only for paymentRail: MANUAL — money an organizer/treasurer received
   // outside the app (cash, a direct mobile money transfer to the org's own
   // number) and logged so it still counts toward the event's collected total.
-  // Deliberately excluded from WithdrawalsService.getBalance(): it was never
-  // actually deposited into the platform's PawaPay balance, so it must never
-  // be withdrawable.
+  // Deliberately excluded from WithdrawalsService.getBalance() AND
+  // BudgetCategoriesService.allocate(): it was never actually deposited into
+  // the platform's balance, so it must never be withdrawable, nor allocated
+  // to a budget category that DisbursementsService.pay() could later send
+  // out for real.
   recordedByUserId  String?            @map("recorded_by_user_id")
   note              String?            @map("note")
   // The platform's cut, charged additively on top of what the payer intended

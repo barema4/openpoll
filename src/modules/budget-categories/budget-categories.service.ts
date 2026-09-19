@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import {
   BudgetApprovalStatus,
+  PaymentRail,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import type { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
@@ -167,10 +168,18 @@ export class BudgetCategoriesService {
       }
 
       const [receivedAgg, allocatedAgg] = await Promise.all([
+        // Excludes paymentRail: MANUAL — those entries record money received
+        // outside the app (cash, a direct mobile money transfer) and were
+        // never actually deposited into the platform's balance. A category
+        // funded from one can be disbursed for real to a vendor once
+        // approved (DisbursementsService.pay()), so only real, gateway-
+        // settled money may ever be allocated — same exclusion
+        // WithdrawalsService.getBalance() already applies for the same reason.
         tx.transaction.aggregate({
           where: {
             eventId: category.eventId,
             status: TransactionStatus.SUCCESS,
+            paymentRail: { not: PaymentRail.MANUAL },
           },
           _sum: { amountSettled: true },
         }),

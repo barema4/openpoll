@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { BudgetCategoriesService } from './budget-categories.service';
-import { BudgetApprovalStatus } from '../../../generated/prisma/enums';
+import {
+  BudgetApprovalStatus,
+  PaymentRail,
+} from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 
@@ -65,6 +68,24 @@ describe('BudgetCategoriesService.allocate', () => {
       where: { id: budgetCategoryId },
       data: { allocatedFunds: { increment: 400 } },
     });
+  });
+
+  it('excludes manual (off-app) contributions from the allocatable pool — there is no real money behind them to later disburse', async () => {
+    const { prisma, tx } = makePrismaMock({
+      totalReceived: 500,
+      totalAllocated: 0,
+    });
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await service.allocate('user-1', budgetCategoryId, { amount: 500 });
+
+    expect(tx.transaction.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          paymentRail: { not: PaymentRail.MANUAL },
+        }),
+      }),
+    );
   });
 
   it('rejects an allocation that exceeds the event-wide remaining balance', async () => {

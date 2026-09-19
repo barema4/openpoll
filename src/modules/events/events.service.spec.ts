@@ -1,5 +1,8 @@
 import { EventsService } from './events.service';
-import { TransactionStatus } from '../../../generated/prisma/enums';
+import {
+  PaymentRail,
+  TransactionStatus,
+} from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PayoutsService } from '../payouts/payouts.service';
@@ -98,11 +101,21 @@ describe('EventsService.findOne', () => {
 
   function makePrisma(opts: {
     totalReceived?: number | null;
+    totalAllocatable?: number | null;
     totalAllocated?: number | null;
   }) {
-    const transactionAggregate = jest.fn().mockResolvedValue({
-      _sum: { amountSettled: opts.totalReceived ?? null },
-    });
+    const transactionAggregate = jest.fn(
+      (args: { where: { paymentRail?: unknown } }) => {
+        const isAllocatable = !!args.where.paymentRail;
+        return Promise.resolve({
+          _sum: {
+            amountSettled: isAllocatable
+              ? (opts.totalAllocatable ?? opts.totalReceived ?? null)
+              : (opts.totalReceived ?? null),
+          },
+        });
+      },
+    );
     const budgetCategoryAggregate = jest.fn().mockResolvedValue({
       _sum: { allocatedFunds: opts.totalAllocated ?? null },
     });
@@ -139,6 +152,34 @@ describe('EventsService.findOne', () => {
     expect(result.totalReceived).toBe(1500);
   });
 
+  it('includes totalAllocatable, excluding paymentRail: MANUAL — cash counts toward totalReceived but not what can be assigned to a budget category', async () => {
+    const { prisma, transactionAggregate } = makePrisma({
+      totalReceived: 1500,
+      totalAllocatable: 1000,
+    });
+    const service = new EventsService(
+      prisma,
+      audit,
+      payouts,
+      invoices,
+      organizations,
+    );
+
+    const result = await service.findOne('event-1');
+
+    expect(transactionAggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: 'event-1',
+          status: TransactionStatus.SUCCESS,
+          paymentRail: { not: PaymentRail.MANUAL },
+        }),
+      }),
+    );
+    expect(result.totalReceived).toBe(1500);
+    expect(result.totalAllocatable).toBe(1000);
+  });
+
   it('includes totalAllocated, summed across every budget category', async () => {
     const { prisma, budgetCategoryAggregate } = makePrisma({
       totalAllocated: 900,
@@ -160,9 +201,10 @@ describe('EventsService.findOne', () => {
     expect(result.totalAllocated).toBe(900);
   });
 
-  it('defaults totalReceived and totalAllocated to 0 when there is nothing yet', async () => {
+  it('defaults totalReceived, totalAllocatable, and totalAllocated to 0 when there is nothing yet', async () => {
     const { prisma } = makePrisma({
       totalReceived: null,
+      totalAllocatable: null,
       totalAllocated: null,
     });
     const service = new EventsService(
@@ -176,6 +218,7 @@ describe('EventsService.findOne', () => {
     const result = await service.findOne('event-1');
 
     expect(result.totalReceived).toBe(0);
+    expect(result.totalAllocatable).toBe(0);
     expect(result.totalAllocated).toBe(0);
   });
 });

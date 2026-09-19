@@ -8,7 +8,10 @@ import type { CreateEventDto } from './dto/create-event.dto';
 import type { CreateQuickEventDto } from './dto/create-quick-event.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
-import { TransactionStatus } from '../../../generated/prisma/enums';
+import {
+  PaymentRail,
+  TransactionStatus,
+} from '../../../generated/prisma/enums';
 import type { EventStatus } from '../../../generated/prisma/enums';
 
 @Injectable()
@@ -78,25 +81,41 @@ export class EventsService {
   // frontend to sum client-side, since both the transactions and budget
   // category lists are paginated and no longer guaranteed to hold every row.
   async findOne(eventId: string) {
-    const [event, receivedAggregate, allocatedAggregate] = await Promise.all([
-      this.prisma.event.findUniqueOrThrow({
-        where: { id: eventId },
-        include: {
-          organization: { select: { country: true } },
-        },
-      }),
-      this.prisma.transaction.aggregate({
-        where: { eventId, status: TransactionStatus.SUCCESS },
-        _sum: { amountSettled: true },
-      }),
-      this.prisma.budgetCategory.aggregate({
-        where: { eventId },
-        _sum: { allocatedFunds: true },
-      }),
-    ]);
+    const [event, receivedAggregate, allocatableAggregate, allocatedAggregate] =
+      await Promise.all([
+        this.prisma.event.findUniqueOrThrow({
+          where: { id: eventId },
+          include: {
+            organization: { select: { country: true } },
+          },
+        }),
+        this.prisma.transaction.aggregate({
+          where: { eventId, status: TransactionStatus.SUCCESS },
+          _sum: { amountSettled: true },
+        }),
+        // Real, gateway-settled money only — excludes paymentRail: MANUAL,
+        // same as BudgetCategoriesService.allocate()'s own gate. This is
+        // what the Budget tab shows/caps allocation against; totalReceived
+        // above stays all-inclusive (cash still counts toward "raised" on
+        // the goal-progress bar, it just can't be assigned to a category
+        // that could later be disbursed for real).
+        this.prisma.transaction.aggregate({
+          where: {
+            eventId,
+            status: TransactionStatus.SUCCESS,
+            paymentRail: { not: PaymentRail.MANUAL },
+          },
+          _sum: { amountSettled: true },
+        }),
+        this.prisma.budgetCategory.aggregate({
+          where: { eventId },
+          _sum: { allocatedFunds: true },
+        }),
+      ]);
     return {
       ...event,
       totalReceived: receivedAggregate._sum.amountSettled ?? 0,
+      totalAllocatable: allocatableAggregate._sum.amountSettled ?? 0,
       totalAllocated: allocatedAggregate._sum.allocatedFunds ?? 0,
     };
   }
