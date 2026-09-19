@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PaymentsService } from './payments.service';
 import { CheckoutController } from './checkout.controller';
+import { DepositsController } from './deposits.controller';
 import { WebhookController } from './webhook.controller';
 import { PawaPayWebhookController } from './pawapay-webhook.controller';
 import { WebhookProcessor } from './webhook.processor';
@@ -38,6 +39,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
   ],
   controllers: [
     CheckoutController,
+    DepositsController,
     WebhookController,
     PawaPayWebhookController,
   ],

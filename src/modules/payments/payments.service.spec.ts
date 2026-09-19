@@ -1,6 +1,7 @@
 import { PaymentsService } from './payments.service';
 import { InvoiceStatus } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { AuditService } from '../../audit/audit.service';
 import type { ConfigService } from '@nestjs/config';
 import type { PaymentProviderRegistry } from './providers/payment-provider.registry';
 
@@ -12,6 +13,10 @@ function makeConfig(platformFeePercent: number) {
         : 'http://localhost:3001',
     ),
   } as unknown as ConfigService;
+}
+
+function makeAudit() {
+  return { record: jest.fn() } as unknown as AuditService;
 }
 
 describe('PaymentsService.initializeCheckout — platform fee', () => {
@@ -54,7 +59,12 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
       forCountry: jest.fn().mockReturnValue({ initializeCharge }),
     } as unknown as PaymentProviderRegistry;
     const prisma = makePrisma(makeInvoice());
-    const service = new PaymentsService(prisma, providers, makeConfig(1.5));
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(1.5),
+      makeAudit(),
+    );
 
     await service.initializeCheckout('tok-abc', {
       email: 'payer@example.com',
@@ -85,7 +95,12 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
       forCountry: jest.fn().mockReturnValue({ initializeCharge }),
     } as unknown as PaymentProviderRegistry;
     const prisma = makePrisma(makeInvoice());
-    const service = new PaymentsService(prisma, providers, makeConfig(0));
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(0),
+      makeAudit(),
+    );
 
     await service.initializeCheckout('tok-abc', {
       email: 'payer@example.com',
@@ -112,7 +127,12 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
       },
     });
     const prisma = makePrisma(invoice);
-    const service = new PaymentsService(prisma, providers, makeConfig(1.5));
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(1.5),
+      makeAudit(),
+    );
 
     await service.initializeCheckout('tok-abc', {
       email: 'payer@example.com',
@@ -128,5 +148,129 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
         metadata: expect.objectContaining({ platformFeeAmount: 15 }) as unknown,
       }),
     );
+  });
+});
+
+describe('PaymentsService.initiateDeposit', () => {
+  const user = { id: 'user-1', email: 'owner@example.com' };
+
+  function makePrismaForEvent(event: unknown) {
+    return {
+      event: { findUnique: jest.fn().mockResolvedValue(event) },
+    } as unknown as PrismaService;
+  }
+
+  it('charges exactly the requested amount with zero fee for a Uganda deposit', async () => {
+    const initializeCharge = jest.fn().mockResolvedValue({
+      status: 'pending',
+      reference: 'ref-1',
+    });
+    const providers = {
+      forCountry: jest.fn().mockReturnValue({ initializeCharge }),
+    } as unknown as PaymentProviderRegistry;
+    const prisma = makePrismaForEvent({
+      id: 'event-1',
+      gatewayWalletId: null,
+      organization: { country: 'UGANDA', gatewayWalletId: null },
+    });
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(1.5),
+      makeAudit(),
+    );
+
+    await service.initiateDeposit(user, 'event-1', {
+      amount: 500,
+      paymentMethod: 'MTN_MOMO_UGA',
+      phoneNumber: '256771234567',
+    });
+
+    expect(initializeCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 500,
+        currency: 'UGX',
+        email: 'owner@example.com',
+        metadata: { eventId: 'event-1', platformFeeAmount: 0 },
+        mobileMoney: {
+          phoneNumber: '256771234567',
+          provider: 'MTN_MOMO_UGA',
+        },
+      }),
+    );
+  });
+
+  it('rejects a Uganda deposit missing a phone number/network', async () => {
+    const providers = {
+      forCountry: jest.fn().mockReturnValue({ initializeCharge: jest.fn() }),
+    } as unknown as PaymentProviderRegistry;
+    const prisma = makePrismaForEvent({
+      id: 'event-1',
+      gatewayWalletId: null,
+      organization: { country: 'UGANDA', gatewayWalletId: null },
+    });
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(0),
+      makeAudit(),
+    );
+
+    await expect(
+      service.initiateDeposit(user, 'event-1', { amount: 500 }),
+    ).rejects.toThrow(/phone number/i);
+  });
+
+  it('redirects via the org subaccount with zero fee for a Kenya deposit', async () => {
+    const initializeCharge = jest.fn().mockResolvedValue({
+      status: 'redirect',
+      authorizationUrl: 'https://paystack.test/pay',
+      reference: 'ref-1',
+    });
+    const providers = {
+      forCountry: jest.fn().mockReturnValue({ initializeCharge }),
+    } as unknown as PaymentProviderRegistry;
+    const prisma = makePrismaForEvent({
+      id: 'event-1',
+      gatewayWalletId: 'ACCT_123',
+      organization: { country: 'KENYA', gatewayWalletId: null },
+    });
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(1.5),
+      makeAudit(),
+    );
+
+    await service.initiateDeposit(user, 'event-1', {
+      amount: 1000,
+      paymentMethod: 'card',
+    });
+
+    expect(initializeCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 1000,
+        subaccountCode: 'ACCT_123',
+        channels: ['card'],
+        metadata: { eventId: 'event-1', platformFeeAmount: 0 },
+      }),
+    );
+  });
+
+  it('rejects when the event does not exist', async () => {
+    const providers = {
+      forCountry: jest.fn(),
+    } as unknown as PaymentProviderRegistry;
+    const prisma = makePrismaForEvent(null);
+    const service = new PaymentsService(
+      prisma,
+      providers,
+      makeConfig(0),
+      makeAudit(),
+    );
+
+    await expect(
+      service.initiateDeposit(user, 'missing-event', { amount: 500 }),
+    ).rejects.toThrow('Event not found');
   });
 });

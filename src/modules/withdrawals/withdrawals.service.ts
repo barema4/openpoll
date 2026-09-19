@@ -5,6 +5,7 @@ import { AuditService } from '../../audit/audit.service';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
 import type { MobileMoneyProvider } from '../payments/providers/payment-provider.interface';
 import {
+  DisbursementStatus,
   OrganizationCountry,
   PaymentRail,
   TransactionStatus,
@@ -28,8 +29,13 @@ export class WithdrawalsService {
   // actually deposited into the platform's PawaPay balance, so they must
   // never be withdrawable even though they do count toward the event's
   // collected total for budget-allocation purposes.
+  // Also subtracts vendor payouts (Disbursement) already sent or in flight —
+  // that money left (or is leaving) the platform's real balance the same as
+  // a Withdrawal does, so it must not remain double-countable as still
+  // withdrawable at the org level. PENDING is included alongside QUEUED/
+  // SUCCESS since it's the brief pre-gateway-call state, not a rejection.
   async getBalance(organizationId: string): Promise<number> {
-    const [receivedAgg, withdrawnAgg] = await Promise.all([
+    const [receivedAgg, withdrawnAgg, disbursedAgg] = await Promise.all([
       this.prisma.transaction.aggregate({
         where: {
           status: TransactionStatus.SUCCESS,
@@ -47,11 +53,25 @@ export class WithdrawalsService {
         },
         _sum: { amount: true },
       }),
+      this.prisma.disbursement.aggregate({
+        where: {
+          event: { organizationId },
+          status: {
+            in: [
+              DisbursementStatus.PENDING,
+              DisbursementStatus.QUEUED,
+              DisbursementStatus.SUCCESS,
+            ],
+          },
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
     const totalReceived = Number(receivedAgg._sum.amountSettled ?? 0);
     const totalWithdrawn = Number(withdrawnAgg._sum.amount ?? 0);
-    return totalReceived - totalWithdrawn;
+    const totalDisbursed = Number(disbursedAgg._sum.amount ?? 0);
+    return totalReceived - totalWithdrawn - totalDisbursed;
   }
 
   async listForOrganization(organizationId: string) {

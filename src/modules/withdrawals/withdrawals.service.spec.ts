@@ -14,6 +14,7 @@ const audit = { record: jest.fn() } as unknown as AuditService;
 function makePrisma(opts: {
   totalReceived?: number | null;
   totalWithdrawn?: number | null;
+  totalDisbursed?: number | null;
   country?: OrganizationCountry;
   payoutMobileProvider?: string | null;
   payoutMobileNumber?: string | null;
@@ -33,6 +34,11 @@ function makePrisma(opts: {
       update: jest
         .fn()
         .mockResolvedValue({ id: 'withdrawal-1', status: 'PROCESSING' }),
+    },
+    disbursement: {
+      aggregate: jest.fn().mockResolvedValue({
+        _sum: { amount: opts.totalDisbursed ?? null },
+      }),
     },
     organization: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -65,6 +71,21 @@ describe('WithdrawalsService.getBalance', () => {
     );
 
     expect(await service.getBalance(organizationId)).toBe(0);
+  });
+
+  it('also subtracts vendor payouts already sent or in flight (Disbursement)', async () => {
+    const prisma = makePrisma({
+      totalReceived: 10000,
+      totalWithdrawn: 1000,
+      totalDisbursed: 4000,
+    });
+    const service = new WithdrawalsService(
+      prisma,
+      audit,
+      {} as PawaPayProvider,
+    );
+
+    expect(await service.getBalance(organizationId)).toBe(5000);
   });
 
   it('excludes manual (off-app) contributions from the withdrawable balance', async () => {

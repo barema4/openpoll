@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackProvider } from '../payments/providers/paystack.provider';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
 import {
+  DisbursementStatus,
   OrganizationCountry,
   PaymentRail,
   TransactionStatus,
@@ -53,11 +54,12 @@ export class ReconciliationService {
   }
 
   // Exact, no known confound: 100% of every UGX charge (base + fee) lands in
-  // one shared PawaPay balance by construction, and withdrawals are the only
-  // outflow — so liveBalance should equal what's still owed to orgs plus
-  // whatever platform fees have accumulated (fees are never withdrawn).
+  // one shared PawaPay balance by construction, and withdrawals/vendor
+  // disbursements are the only outflows — so liveBalance should equal what's
+  // still owed to orgs plus whatever platform fees have accumulated (fees
+  // are never withdrawn).
   private async checkUganda() {
-    const [liveBalances, receivedAgg, withdrawnAgg, feesAgg] =
+    const [liveBalances, receivedAgg, withdrawnAgg, disbursedAgg, feesAgg] =
       await Promise.all([
         this.pawapay.getBalance('UGA'),
         this.prisma.transaction.aggregate({
@@ -77,6 +79,19 @@ export class ReconciliationService {
           },
           _sum: { amount: true },
         }),
+        this.prisma.disbursement.aggregate({
+          where: {
+            event: { organization: { country: OrganizationCountry.UGANDA } },
+            status: {
+              in: [
+                DisbursementStatus.PENDING,
+                DisbursementStatus.QUEUED,
+                DisbursementStatus.SUCCESS,
+              ],
+            },
+          },
+          _sum: { amount: true },
+        }),
         this.prisma.transaction.aggregate({
           where: {
             status: TransactionStatus.SUCCESS,
@@ -88,7 +103,8 @@ export class ReconciliationService {
 
     const totalOwedToOrgs =
       Number(receivedAgg._sum.amountSettled ?? 0) -
-      Number(withdrawnAgg._sum.amount ?? 0);
+      Number(withdrawnAgg._sum.amount ?? 0) -
+      Number(disbursedAgg._sum.amount ?? 0);
     const totalPlatformFees = Number(feesAgg._sum.platformFeeAmount ?? 0);
     const expectedTotal = totalOwedToOrgs + totalPlatformFees;
     const liveBalance =

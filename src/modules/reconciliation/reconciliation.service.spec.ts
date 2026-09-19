@@ -7,6 +7,7 @@ function makePrisma(opts: {
   kenyaFees?: number | null;
   ugandaReceived?: number | null;
   ugandaWithdrawn?: number | null;
+  ugandaDisbursed?: number | null;
   ugandaFees?: number | null;
 }) {
   const aggregateCalls: unknown[] = [];
@@ -34,6 +35,11 @@ function makePrisma(opts: {
     withdrawal: {
       aggregate: jest.fn().mockResolvedValue({
         _sum: { amount: opts.ugandaWithdrawn ?? null },
+      }),
+    },
+    disbursement: {
+      aggregate: jest.fn().mockResolvedValue({
+        _sum: { amount: opts.ugandaDisbursed ?? null },
       }),
     },
   } as unknown as PrismaService;
@@ -87,6 +93,32 @@ describe('ReconciliationService', () => {
     expect(report.uganda.totalOwedToOrgs).toBe(7000);
     expect(report.uganda.totalPlatformFees).toBe(150);
     expect(report.uganda.expectedTotal).toBe(7150);
+    expect(report.uganda.drift).toBe(0);
+  });
+
+  it('subtracts vendor payouts already sent or in flight (Disbursement) from what is owed to orgs', async () => {
+    const prisma = makePrisma({
+      ugandaReceived: 10000,
+      ugandaWithdrawn: 1000,
+      ugandaDisbursed: 4000,
+      ugandaFees: 0,
+    });
+    const paystack = {
+      getBalance: jest.fn().mockResolvedValue([]),
+    } as unknown as PaystackProvider;
+    const pawapay = {
+      getBalance: jest
+        .fn()
+        .mockResolvedValue([
+          { country: 'UGA', currency: 'UGX', balance: 5000 },
+        ]),
+    } as unknown as PawaPayProvider;
+    const service = new ReconciliationService(prisma, paystack, pawapay);
+
+    const report = await service.check();
+
+    // owed to orgs = 10000 - 1000 - 4000 = 5000.
+    expect(report.uganda.totalOwedToOrgs).toBe(5000);
     expect(report.uganda.drift).toBe(0);
   });
 
