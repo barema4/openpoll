@@ -14,6 +14,7 @@ import { BudgetCategoriesService } from './budget-categories.service';
 import { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
 import { AllocateBudgetDto } from './dto/allocate-budget.dto';
+import { AssignVendorDto } from './dto/assign-vendor.dto';
 import { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
@@ -68,6 +69,15 @@ export class BudgetCategoriesController {
     @Param('budgetCategoryId') budgetCategoryId: string,
   ) {
     return this.budgetCategoriesService.remove(user.id, budgetCategoryId);
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)
+  @Patch(':budgetCategoryId/vendor')
+  assignVendor(
+    @Param('budgetCategoryId') budgetCategoryId: string,
+    @Body() dto: AssignVendorDto,
+  ) {
+    return this.budgetCategoriesService.assignVendor(budgetCategoryId, dto);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER)

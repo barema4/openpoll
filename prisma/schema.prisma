@@ -492,7 +492,10 @@ model Disbursement {
   recipientMobileProvider String?                  @map("recipient_mobile_provider")
   recipientMobileNumber   String?                  @map("recipient_mobile_number")
   amount                  Decimal                  @db.Decimal(14, 2)
-  gatewayTransferRef      String?                  @map("gateway_transfer_ref")
+  // The PawaPay payoutId — unique so the payout-completion webhook
+  // (pawapay-webhook.controller.ts) can look a disbursement up by it,
+  // exactly like Withdrawal.providerReference.
+  gatewayTransferRef      String?                  @unique @map("gateway_transfer_ref")
   status                  DisbursementStatus       @default(PENDING)
   failureReason           String?                  @map("failure_reason")
   initiatedBy             String                   @map("initiated_by")

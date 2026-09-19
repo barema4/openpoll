@@ -8,6 +8,7 @@ import {
 import type { CreateBudgetCategoryDto } from './dto/create-budget-category.dto';
 import type { UpdateBudgetCategoryDto } from './dto/update-budget-category.dto';
 import type { AllocateBudgetDto } from './dto/allocate-budget.dto';
+import type { AssignVendorDto } from './dto/assign-vendor.dto';
 import type { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
 import { paginate } from '../../common/pagination.util';
 
@@ -57,6 +58,34 @@ export class BudgetCategoriesService {
     return this.prisma.budgetCategory.update({
       where: { id: budgetCategoryId },
       data: { name: dto.name, estimatedCost: dto.estimatedCost },
+    });
+  }
+
+  // Deliberately NOT gated by assertBudgetEditable — choosing which vendor
+  // gets paid doesn't change the approved numbers, and this is meant to
+  // happen precisely once the budget is FUNDED (i.e. well past DRAFT/
+  // DECLINED). DisbursementsService.pay() is what actually enforces FUNDED
+  // before any money moves.
+  async assignVendor(budgetCategoryId: string, dto: AssignVendorDto) {
+    if (dto.vendorId) {
+      const category = await this.prisma.budgetCategory.findUniqueOrThrow({
+        where: { id: budgetCategoryId },
+        select: { event: { select: { organizationId: true } } },
+      });
+      const vendor = await this.prisma.vendor.findUnique({
+        where: { id: dto.vendorId },
+        select: { organizationId: true },
+      });
+      if (!vendor || vendor.organizationId !== category.event.organizationId) {
+        throw new BadRequestException(
+          "That vendor doesn't belong to this event's organization",
+        );
+      }
+    }
+
+    return this.prisma.budgetCategory.update({
+      where: { id: budgetCategoryId },
+      data: { vendorId: dto.vendorId },
     });
   }
 

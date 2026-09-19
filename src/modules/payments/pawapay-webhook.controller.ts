@@ -17,7 +17,10 @@ import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-in
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { TransactionsService } from '../transactions/transactions.service';
-import { WithdrawalStatus } from '../../../generated/prisma/enums';
+import {
+  DisbursementStatus,
+  WithdrawalStatus,
+} from '../../../generated/prisma/enums';
 
 interface PawaPayCallbackBody {
   depositId?: string;
@@ -85,12 +88,36 @@ export class PawaPayWebhookController {
     return { received: true };
   }
 
+  // A payoutId belongs to either an organizer withdrawal or a vendor
+  // disbursement — both share this one PawaPay callback URL, distinguished
+  // by which table has a row with this providerReference/gatewayTransferRef.
   private async handlePayoutCallback(body: PawaPayCallbackBody) {
     const withdrawal = await this.prisma.withdrawal.findUnique({
       where: { providerReference: body.payoutId },
     });
-    if (!withdrawal) return; // Unknown/foreign payout — nothing of ours to update.
+    if (withdrawal) {
+      await this.completeWithdrawal(withdrawal, body);
+      return;
+    }
 
+    const disbursement = await this.prisma.disbursement.findUnique({
+      where: { gatewayTransferRef: body.payoutId },
+    });
+    if (disbursement) {
+      await this.completeDisbursement(disbursement, body);
+      return;
+    }
+    // Unknown/foreign payout — nothing of ours to update.
+  }
+
+  private async completeWithdrawal(
+    withdrawal: {
+      id: string;
+      organizationId: string;
+      status: WithdrawalStatus;
+    },
+    body: PawaPayCallbackBody,
+  ) {
     const nextStatus =
       body.status === 'COMPLETED'
         ? WithdrawalStatus.COMPLETED
@@ -115,6 +142,42 @@ export class PawaPayWebhookController {
       payload: {
         withdrawalId: withdrawal.id,
         organizationId: withdrawal.organizationId,
+      },
+    });
+  }
+
+  private async completeDisbursement(
+    disbursement: {
+      id: string;
+      eventId: string;
+      budgetCategoryId: string | null;
+      status: DisbursementStatus;
+    },
+    body: PawaPayCallbackBody,
+  ) {
+    const nextStatus =
+      body.status === 'COMPLETED'
+        ? DisbursementStatus.SUCCESS
+        : DisbursementStatus.FAILED;
+    if (disbursement.status === nextStatus) return; // Already processed — redelivered callback.
+
+    await this.prisma.disbursement.update({
+      where: { id: disbursement.id },
+      data: {
+        status: nextStatus,
+        failureReason: body.failureReason?.failureMessage,
+      },
+    });
+
+    await this.audit.record({
+      eventId: disbursement.eventId,
+      action:
+        nextStatus === DisbursementStatus.SUCCESS
+          ? 'VENDOR_PAYOUT_COMPLETED'
+          : 'VENDOR_PAYOUT_FAILED',
+      payload: {
+        disbursementId: disbursement.id,
+        budgetCategoryId: disbursement.budgetCategoryId,
       },
     });
   }

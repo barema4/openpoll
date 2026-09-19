@@ -324,3 +324,72 @@ describe('BudgetCategoriesService — locked while pending/approved/funded', () 
     ).resolves.toEqual({ id: 'category-1' });
   });
 });
+
+describe('BudgetCategoriesService.assignVendor', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+
+  it('assigns a vendor that belongs to the same organization as the event', async () => {
+    const findUniqueOrThrowCategory = jest
+      .fn()
+      .mockResolvedValue({ event: { organizationId: 'org-1' } });
+    const findUniqueVendor = jest
+      .fn()
+      .mockResolvedValue({ organizationId: 'org-1' });
+    const update = jest
+      .fn()
+      .mockResolvedValue({ id: 'category-1', vendorId: 'vendor-1' });
+    const prisma = {
+      budgetCategory: { findUniqueOrThrow: findUniqueOrThrowCategory, update },
+      vendor: { findUnique: findUniqueVendor },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    const result = await service.assignVendor('category-1', {
+      vendorId: 'vendor-1',
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'category-1' },
+      data: { vendorId: 'vendor-1' },
+    });
+    expect(result).toEqual({ id: 'category-1', vendorId: 'vendor-1' });
+  });
+
+  it('rejects a vendor belonging to a different organization', async () => {
+    const prisma = {
+      budgetCategory: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ event: { organizationId: 'org-1' } }),
+      },
+      vendor: {
+        findUnique: jest.fn().mockResolvedValue({ organizationId: 'org-2' }),
+      },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.assignVendor('category-1', { vendorId: 'vendor-1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('unassigns the vendor when vendorId is null, without checking any vendor', async () => {
+    const findUniqueVendor = jest.fn();
+    const update = jest
+      .fn()
+      .mockResolvedValue({ id: 'category-1', vendorId: null });
+    const prisma = {
+      budgetCategory: { findUniqueOrThrow: jest.fn(), update },
+      vendor: { findUnique: findUniqueVendor },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await service.assignVendor('category-1', { vendorId: null });
+
+    expect(findUniqueVendor).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'category-1' },
+      data: { vendorId: null },
+    });
+  });
+});
