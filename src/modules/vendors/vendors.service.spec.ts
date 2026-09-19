@@ -123,7 +123,11 @@ describe('VendorsService.create', () => {
 describe('VendorsService.listForOrganization', () => {
   it('lists vendors for the organization, newest first, without raw account/phone fields', async () => {
     const findMany = jest.fn().mockResolvedValue([{ id: 'vendor-1' }]);
-    const prisma = { vendor: { findMany } } as unknown as PrismaService;
+    const findUniqueAgencyLink = jest.fn().mockResolvedValue(null);
+    const prisma = {
+      vendor: { findMany },
+      agencyClientLink: { findUnique: findUniqueAgencyLink },
+    } as unknown as PrismaService;
     const paystack = {} as unknown as BankPayoutProvider;
     const service = new VendorsService(prisma, paystack);
 
@@ -131,7 +135,7 @@ describe('VendorsService.listForOrganization', () => {
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: 'org-1' },
+        where: { organizationId: { in: ['org-1'] } },
         orderBy: { createdAt: 'desc' },
       }),
     );
@@ -141,6 +145,32 @@ describe('VendorsService.listForOrganization', () => {
     expect(select.payoutAccountNumber).toBeUndefined();
     expect(select.payoutMobileNumber).toBeUndefined();
     expect(result).toEqual([{ id: 'vendor-1' }]);
+  });
+
+  it('also includes vendors owned by the agency managing this org', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const findUniqueAgencyLink = jest
+      .fn()
+      .mockResolvedValue({ agencyOrganizationId: 'agency-org-1' });
+    const prisma = {
+      vendor: { findMany },
+      agencyClientLink: { findUnique: findUniqueAgencyLink },
+    } as unknown as PrismaService;
+    const paystack = {} as unknown as BankPayoutProvider;
+    const service = new VendorsService(prisma, paystack);
+
+    await service.listForOrganization('client-org-1');
+
+    expect(findUniqueAgencyLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { clientOrganizationId: 'client-org-1' },
+      }),
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: { in: ['client-org-1', 'agency-org-1'] } },
+      }),
+    );
   });
 });
 

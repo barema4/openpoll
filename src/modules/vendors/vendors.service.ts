@@ -25,6 +25,10 @@ const SAFE_SELECT = {
   payoutMobileProvider: true,
   payoutMobileNumberLast4: true,
   createdAt: true,
+  // Lets a caller tell an org's own vendor apart from one inherited via an
+  // agency link (see listForOrganization below) — id/name match the org you
+  // asked for when it's directly owned, or the managing agency's when not.
+  organization: { select: { id: true, name: true } },
 } as const;
 
 @Injectable()
@@ -72,9 +76,20 @@ export class VendorsService {
     });
   }
 
-  listForOrganization(organizationId: string) {
+  // Also includes vendors owned by whichever agency manages this org (see
+  // AgencyClientLink) — an agency's own vendor roster is reusable across
+  // every client it manages, not re-entered per client.
+  async listForOrganization(organizationId: string) {
+    const link = await this.prisma.agencyClientLink.findUnique({
+      where: { clientOrganizationId: organizationId },
+      select: { agencyOrganizationId: true },
+    });
+    const organizationIds = link
+      ? [organizationId, link.agencyOrganizationId]
+      : [organizationId];
+
     return this.prisma.vendor.findMany({
-      where: { organizationId },
+      where: { organizationId: { in: organizationIds } },
       orderBy: { createdAt: 'desc' },
       select: SAFE_SELECT,
     });

@@ -376,7 +376,7 @@ describe('BudgetCategoriesService.assignVendor', () => {
     expect(result).toEqual({ id: 'category-1', vendorId: 'vendor-1' });
   });
 
-  it('rejects a vendor belonging to a different organization', async () => {
+  it('rejects a vendor belonging to a different organization with no agency relationship', async () => {
     const prisma = {
       budgetCategory: {
         findUniqueOrThrow: jest
@@ -385,6 +385,63 @@ describe('BudgetCategoriesService.assignVendor', () => {
       },
       vendor: {
         findUnique: jest.fn().mockResolvedValue({ organizationId: 'org-2' }),
+      },
+      agencyClientLink: { findUnique: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    await expect(
+      service.assignVendor('category-1', { vendorId: 'vendor-1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("allows a vendor owned by the agency managing this event's organization", async () => {
+    const update = jest
+      .fn()
+      .mockResolvedValue({ id: 'category-1', vendorId: 'vendor-1' });
+    const prisma = {
+      budgetCategory: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ event: { organizationId: 'client-org-1' } }),
+        update,
+      },
+      vendor: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ organizationId: 'agency-org-1' }),
+      },
+      agencyClientLink: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ agencyOrganizationId: 'agency-org-1' }),
+      },
+    } as unknown as PrismaService;
+    const service = new BudgetCategoriesService(prisma, audit);
+
+    const result = await service.assignVendor('category-1', {
+      vendorId: 'vendor-1',
+    });
+
+    expect(result).toEqual({ id: 'category-1', vendorId: 'vendor-1' });
+  });
+
+  it("rejects a vendor owned by a different agency than the one managing this event's organization", async () => {
+    const prisma = {
+      budgetCategory: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ event: { organizationId: 'client-org-1' } }),
+      },
+      vendor: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ organizationId: 'some-other-org' }),
+      },
+      agencyClientLink: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ agencyOrganizationId: 'agency-org-1' }),
       },
     } as unknown as PrismaService;
     const service = new BudgetCategoriesService(prisma, audit);

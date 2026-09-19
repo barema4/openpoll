@@ -77,7 +77,23 @@ export class BudgetCategoriesService {
         where: { id: dto.vendorId },
         select: { organizationId: true },
       });
-      if (!vendor || vendor.organizationId !== category.event.organizationId) {
+
+      const eventOrganizationId = category.event.organizationId;
+      const belongsDirectly = vendor?.organizationId === eventOrganizationId;
+      // Also allow a vendor owned by whichever agency manages this event's
+      // org — the same cross-client roster listForOrganization() exposes.
+      const belongsViaAgency =
+        !!vendor &&
+        !belongsDirectly &&
+        !!eventOrganizationId &&
+        (
+          await this.prisma.agencyClientLink.findUnique({
+            where: { clientOrganizationId: eventOrganizationId },
+            select: { agencyOrganizationId: true },
+          })
+        )?.agencyOrganizationId === vendor.organizationId;
+
+      if (!vendor || (!belongsDirectly && !belongsViaAgency)) {
         throw new BadRequestException(
           "That vendor doesn't belong to this event's organization",
         );
