@@ -1,9 +1,14 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
 import type { MobileMoneyProvider } from '../payments/providers/payment-provider.interface';
+import { Prisma } from '../../../generated/prisma/client';
 import {
   DisbursementStatus,
   OrganizationCountry,
@@ -12,6 +17,7 @@ import {
   WithdrawalStatus,
 } from '../../../generated/prisma/enums';
 import type { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
+import { isTransactionConflictError } from '../../common/prisma-conflict.util';
 
 @Injectable()
 export class WithdrawalsService {
@@ -34,9 +40,15 @@ export class WithdrawalsService {
   // a Withdrawal does, so it must not remain double-countable as still
   // withdrawable at the org level. PENDING is included alongside QUEUED/
   // SUCCESS since it's the brief pre-gateway-call state, not a rejection.
-  async getBalance(organizationId: string): Promise<number> {
+  // Accepts an optional transaction client so requestWithdrawal() can read
+  // the balance and reserve a Withdrawal row against it inside the same
+  // Serializable transaction (see reserveWithdrawal below).
+  async getBalance(
+    organizationId: string,
+    client: PrismaService | Prisma.TransactionClient = this.prisma,
+  ): Promise<number> {
     const [receivedAgg, withdrawnAgg, disbursedAgg] = await Promise.all([
-      this.prisma.transaction.aggregate({
+      client.transaction.aggregate({
         where: {
           status: TransactionStatus.SUCCESS,
           paymentRail: { not: PaymentRail.MANUAL },
@@ -44,7 +56,7 @@ export class WithdrawalsService {
         },
         _sum: { amountSettled: true },
       }),
-      this.prisma.withdrawal.aggregate({
+      client.withdrawal.aggregate({
         where: {
           organizationId,
           status: {
@@ -53,7 +65,7 @@ export class WithdrawalsService {
         },
         _sum: { amount: true },
       }),
-      this.prisma.disbursement.aggregate({
+      client.disbursement.aggregate({
         where: {
           event: { organizationId },
           status: {
@@ -113,16 +125,11 @@ export class WithdrawalsService {
       );
     }
 
-    const balance = await this.getBalance(organizationId);
-    if (dto.amount > balance) {
-      throw new BadRequestException(
-        `Withdrawal amount exceeds the available balance (${balance})`,
-      );
-    }
-
-    const withdrawal = await this.prisma.withdrawal.create({
-      data: { organizationId, amount: dto.amount, requestedByUserId: userId },
-    });
+    const withdrawal = await this.reserveWithdrawal(
+      organizationId,
+      userId,
+      dto.amount,
+    );
 
     const payoutId = randomUUID();
     const result = await this.pawapay.initiatePayout({
@@ -154,5 +161,42 @@ export class WithdrawalsService {
     });
 
     return updated;
+  }
+
+  // Checks the balance and creates the Withdrawal row inside one
+  // Serializable transaction. Without this, two concurrent withdrawal
+  // requests for the same organization could both read the same balance,
+  // both pass the check, and both trigger a real PawaPay payout — draining
+  // more than the organization actually has. Postgres aborts one of the two
+  // with a serialization failure instead, surfaced here as a 409.
+  private async reserveWithdrawal(
+    organizationId: string,
+    userId: string,
+    amount: number,
+  ) {
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const balance = await this.getBalance(organizationId, tx);
+          if (amount > balance) {
+            throw new BadRequestException(
+              `Withdrawal amount exceeds the available balance (${balance})`,
+            );
+          }
+
+          return tx.withdrawal.create({
+            data: { organizationId, amount, requestedByUserId: userId },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (err) {
+      if (isTransactionConflictError(err)) {
+        throw new ConflictException(
+          'A withdrawal is already being processed for this organization — try again in a moment',
+        );
+      }
+      throw err;
+    }
   }
 }

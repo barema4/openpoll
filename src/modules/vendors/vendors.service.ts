@@ -1,10 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   PAYSTACK_PROVIDER,
   type BankPayoutProvider,
 } from '../payments/providers/payment-provider.interface';
-import { VendorPayoutMethod } from '../../../generated/prisma/enums';
+import {
+  DisbursementStatus,
+  VendorPayoutMethod,
+} from '../../../generated/prisma/enums';
 import type { CreateVendorDto } from './dto/create-vendor.dto';
 
 // Fields safe to return to the client — never the raw payoutAccountNumber/
@@ -77,7 +80,27 @@ export class VendorsService {
     });
   }
 
+  // Blocks deleting a vendor with a payout still in flight — Disbursement's
+  // vendorId is onDelete: SetNull, so deleting mid-payout would silently
+  // orphan that row's FK reference while PawaPay is still processing it.
+  // A historical (SUCCESS/FAILED) disbursement doesn't block deletion — its
+  // recipientName/amount/date are already permanently snapshotted on the
+  // row, so losing the FK link there is cosmetic, not a loss of audit data.
   async remove(vendorId: string) {
+    const inFlight = await this.prisma.disbursement.count({
+      where: {
+        vendorId,
+        status: {
+          in: [DisbursementStatus.PENDING, DisbursementStatus.QUEUED],
+        },
+      },
+    });
+    if (inFlight > 0) {
+      throw new BadRequestException(
+        'This vendor has a payout still in progress — wait for it to complete before deleting',
+      );
+    }
+
     return this.prisma.vendor.delete({
       where: { id: vendorId },
       select: SAFE_SELECT,

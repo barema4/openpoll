@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DisbursementsService } from './disbursements.service';
+import { Prisma } from '../../../generated/prisma/client';
 import {
   BudgetApprovalStatus,
   DisbursementStatus,
@@ -31,21 +32,41 @@ describe('DisbursementsService.pay', () => {
     };
   }
 
+  // reserveDisbursement() runs everything inside prisma.$transaction — the
+  // mock invokes the callback with a `tx` exposing the same model methods,
+  // matching how the real Prisma client behaves for an interactive
+  // transaction. disbursement.update (the post-payout status flip) happens
+  // outside the transaction, so it stays on the top-level prisma mock.
   function makeService(opts: {
     category: ReturnType<typeof makeCategory>;
     alreadyPaid?: number | null;
+    eventReceived?: number | null;
     payoutAccepted?: boolean;
     failureMessage?: string;
+    transactionError?: Error;
   }) {
     const findUniqueOrThrow = jest.fn().mockResolvedValue(opts.category);
-    const aggregate = jest
+    const disbursementAggregate = jest
       .fn()
       .mockResolvedValue({ _sum: { amount: opts.alreadyPaid ?? null } });
-    const create = jest.fn().mockResolvedValue({ id: 'disb-1' });
+    const transactionAggregate = jest.fn().mockResolvedValue({
+      _sum: { amountSettled: opts.eventReceived ?? 100000 },
+    });
+    const create = jest.fn((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: 'disb-1', ...args.data }),
+    );
+    const tx = {
+      budgetCategory: { findUniqueOrThrow },
+      disbursement: { aggregate: disbursementAggregate, create },
+      transaction: { aggregate: transactionAggregate },
+    };
+    const $transaction = opts.transactionError
+      ? jest.fn().mockRejectedValue(opts.transactionError)
+      : jest.fn((cb: (tx: unknown) => unknown) => cb(tx));
     const update = jest.fn().mockResolvedValue({ id: 'disb-1' });
     const prisma = {
-      budgetCategory: { findUniqueOrThrow },
-      disbursement: { aggregate, create, update },
+      $transaction,
+      disbursement: { update },
     } as unknown as PrismaService;
     const recordAudit = jest.fn();
     const audit = { record: recordAudit } as unknown as AuditService;
@@ -55,7 +76,15 @@ describe('DisbursementsService.pay', () => {
     });
     const pawapay = { initiatePayout } as unknown as PawaPayProvider;
     const service = new DisbursementsService(prisma, audit, pawapay);
-    return { service, create, update, initiatePayout, recordAudit, aggregate };
+    return {
+      service,
+      create,
+      update,
+      initiatePayout,
+      recordAudit,
+      disbursementAggregate,
+      transactionAggregate,
+    };
   }
 
   it('pays the full remaining allocated balance to a Uganda mobile-money vendor', async () => {
@@ -190,6 +219,55 @@ describe('DisbursementsService.pay', () => {
           failureReason: 'insufficient platform balance',
         }) as unknown,
       }),
+    );
+  });
+
+  it('rejects when the event no longer really holds the allocated amount (e.g. a refund happened after allocation)', async () => {
+    const { service } = makeService({
+      category: makeCategory(),
+      alreadyPaid: 0,
+      // The category shows 500 allocated, but the event's real, current
+      // pool (non-manual SUCCESS transactions minus what's already
+      // disbursed) is only 200 — allocatedFunds is stale relative to a
+      // refund that happened after allocation.
+      eventReceived: 200,
+    });
+
+    await expect(service.pay('user-1', 'cat-1')).rejects.toThrow(
+      /actually still holds/i,
+    );
+  });
+
+  it('rejects with a 409 when a concurrent Pay request wins the race (Postgres serialization failure)', async () => {
+    const conflict = new Prisma.PrismaClientKnownRequestError('conflict', {
+      code: 'P2034',
+      clientVersion: 'test',
+    });
+    const { service } = makeService({
+      category: makeCategory(),
+      alreadyPaid: 0,
+      transactionError: conflict,
+    });
+
+    await expect(service.pay('user-1', 'cat-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('rejects with a 409 for the real DriverAdapterError shape @prisma/adapter-pg actually throws on conflict', async () => {
+    const conflict = new Error('TransactionWriteConflict');
+    conflict.name = 'DriverAdapterError';
+    (conflict as unknown as { cause: { kind: string } }).cause = {
+      kind: 'TransactionWriteConflict',
+    };
+    const { service } = makeService({
+      category: makeCategory(),
+      alreadyPaid: 0,
+      transactionError: conflict,
+    });
+
+    await expect(service.pay('user-1', 'cat-1')).rejects.toBeInstanceOf(
+      ConflictException,
     );
   });
 });

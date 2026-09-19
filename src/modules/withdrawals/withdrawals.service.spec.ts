@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { WithdrawalsService } from './withdrawals.service';
+import { Prisma } from '../../../generated/prisma/client';
 import {
   OrganizationCountry,
   PaymentRail,
@@ -11,6 +12,10 @@ import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
 const organizationId = 'org-1';
 const audit = { record: jest.fn() } as unknown as AuditService;
 
+// reserveWithdrawal() runs the balance check + Withdrawal creation inside
+// prisma.$transaction — $transaction here just invokes the callback with
+// the very same mock functions as the top-level prisma object, so a test
+// can assert against either handle interchangeably.
 function makePrisma(opts: {
   totalReceived?: number | null;
   totalWithdrawn?: number | null;
@@ -19,27 +24,35 @@ function makePrisma(opts: {
   payoutMobileProvider?: string | null;
   payoutMobileNumber?: string | null;
 }) {
+  const transactionAggregate = jest.fn().mockResolvedValue({
+    _sum: { amountSettled: opts.totalReceived ?? null },
+  });
+  const withdrawalAggregate = jest.fn().mockResolvedValue({
+    _sum: { amount: opts.totalWithdrawn ?? null },
+  });
+  const withdrawalCreate = jest.fn().mockResolvedValue({ id: 'withdrawal-1' });
+  const disbursementAggregate = jest.fn().mockResolvedValue({
+    _sum: { amount: opts.totalDisbursed ?? null },
+  });
+
+  const txHandle = {
+    transaction: { aggregate: transactionAggregate },
+    withdrawal: { aggregate: withdrawalAggregate, create: withdrawalCreate },
+    disbursement: { aggregate: disbursementAggregate },
+  };
+
   return {
-    transaction: {
-      aggregate: jest.fn().mockResolvedValue({
-        _sum: { amountSettled: opts.totalReceived ?? null },
-      }),
-    },
+    $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(txHandle)),
+    transaction: { aggregate: transactionAggregate },
     withdrawal: {
-      aggregate: jest.fn().mockResolvedValue({
-        _sum: { amount: opts.totalWithdrawn ?? null },
-      }),
+      aggregate: withdrawalAggregate,
       findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ id: 'withdrawal-1' }),
+      create: withdrawalCreate,
       update: jest
         .fn()
         .mockResolvedValue({ id: 'withdrawal-1', status: 'PROCESSING' }),
     },
-    disbursement: {
-      aggregate: jest.fn().mockResolvedValue({
-        _sum: { amount: opts.totalDisbursed ?? null },
-      }),
-    },
+    disbursement: { aggregate: disbursementAggregate },
     organization: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         country: opts.country ?? OrganizationCountry.UGANDA,
@@ -205,5 +218,47 @@ describe('WithdrawalsService.requestWithdrawal', () => {
         }),
       }),
     );
+  });
+
+  it('rejects with a 409 when a concurrent withdrawal request wins the race (Postgres serialization failure)', async () => {
+    const prisma = makePrisma({ totalReceived: 1000, totalWithdrawn: 0 });
+    (
+      prisma as unknown as { $transaction: jest.Mock }
+    ).$transaction.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      }),
+    );
+    const service = new WithdrawalsService(
+      prisma,
+      audit,
+      {} as PawaPayProvider,
+    );
+
+    await expect(
+      service.requestWithdrawal('user-1', organizationId, { amount: 500 }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects with a 409 for the real DriverAdapterError shape @prisma/adapter-pg actually throws on conflict', async () => {
+    const prisma = makePrisma({ totalReceived: 1000, totalWithdrawn: 0 });
+    const conflict = new Error('TransactionWriteConflict');
+    conflict.name = 'DriverAdapterError';
+    (conflict as unknown as { cause: { kind: string } }).cause = {
+      kind: 'TransactionWriteConflict',
+    };
+    (
+      prisma as unknown as { $transaction: jest.Mock }
+    ).$transaction.mockRejectedValue(conflict);
+    const service = new WithdrawalsService(
+      prisma,
+      audit,
+      {} as PawaPayProvider,
+    );
+
+    await expect(
+      service.requestWithdrawal('user-1', organizationId, { amount: 500 }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

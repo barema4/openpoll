@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { VendorPayoutMethod } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -144,17 +145,45 @@ describe('VendorsService.listForOrganization', () => {
 });
 
 describe('VendorsService.remove', () => {
-  it('deletes the vendor', async () => {
+  it('deletes the vendor when it has no in-flight disbursement', async () => {
     const deleteFn = jest.fn().mockResolvedValue({ id: 'vendor-1' });
-    const prisma = { vendor: { delete: deleteFn } } as unknown as PrismaService;
+    const count = jest.fn().mockResolvedValue(0);
+    const prisma = {
+      vendor: { delete: deleteFn },
+      disbursement: { count },
+    } as unknown as PrismaService;
     const paystack = {} as unknown as BankPayoutProvider;
     const service = new VendorsService(prisma, paystack);
 
     const result = await service.remove('vendor-1');
 
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          vendorId: 'vendor-1',
+          status: { in: ['PENDING', 'QUEUED'] },
+        }),
+      }),
+    );
     expect(deleteFn).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'vendor-1' } }),
     );
     expect(result).toEqual({ id: 'vendor-1' });
+  });
+
+  it('rejects deletion while a payout to this vendor is still in flight', async () => {
+    const deleteFn = jest.fn();
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      vendor: { delete: deleteFn },
+      disbursement: { count },
+    } as unknown as PrismaService;
+    const paystack = {} as unknown as BankPayoutProvider;
+    const service = new VendorsService(prisma, paystack);
+
+    await expect(service.remove('vendor-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(deleteFn).not.toHaveBeenCalled();
   });
 });
