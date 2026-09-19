@@ -16,18 +16,18 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id              String   @id @default(uuid())
-  email           String   @unique
-  passwordHash    String   @map("password_hash")
-  name            String
+  id                   String              @id @default(uuid())
+  email                String              @unique
+  passwordHash         String              @map("password_hash")
+  name                 String
   // Paystack subaccount code for this user's own payout destination — lets an
   // individual with no Organization still receive money via personal invoices.
   // Set only via the bank-account onboarding flow (POST /payouts/resolve-account
   // + PATCH /users/me/payout) — never accepted as a raw value from a client.
-  gatewayWalletId    String?  @map("gateway_wallet_id")
-  payoutBankName     String?  @map("payout_bank_name")
-  payoutAccountName  String?  @map("payout_account_name")
-  payoutAccountLast4 String?  @map("payout_account_last4")
+  gatewayWalletId      String?             @map("gateway_wallet_id")
+  payoutBankName       String?             @map("payout_bank_name")
+  payoutAccountName    String?             @map("payout_account_name")
+  payoutAccountLast4   String?             @map("payout_account_last4")
   // Determines which payment provider/currency this user's personal invoices
   // use — same idea as Organization.country, just at the individual level
   // since personal invoicing needs no organization at all.
@@ -38,19 +38,20 @@ model User {
   // from OrgRole, which is scoped per-organization. Null means a regular
   // user with no admin access at all. See resolve-effective-platform-role.ts
   // for the operator-email bootstrap fallback layered on top of this.
-  platformRole       PlatformRole? @map("platform_role")
-  createdAt          DateTime @default(now()) @map("created_at")
+  platformRole         PlatformRole?       @map("platform_role")
+  createdAt            DateTime            @default(now()) @map("created_at")
 
-  memberships           OrganizationMembership[]
-  auditLogs             AuditLog[]
-  personalInvoices      PersonalInvoice[]
-  passwordResetTokens   PasswordResetToken[]
-  sentInvitations       OrganizationInvitation[]
-  sentStaffInvitations  PlatformStaffInvitation[]
-  allocations           Allocation[]
-  requestedWithdrawals  Withdrawal[]
-  manualTransactions    Transaction[]
-  requestedRefunds      Refund[]
+  memberships          OrganizationMembership[]
+  auditLogs            AuditLog[]
+  personalInvoices     PersonalInvoice[]
+  passwordResetTokens  PasswordResetToken[]
+  sentInvitations      OrganizationInvitation[]
+  sentStaffInvitations PlatformStaffInvitation[]
+  allocations          Allocation[]
+  requestedWithdrawals Withdrawal[]
+  manualTransactions   Transaction[]
+  requestedRefunds     Refund[]
+  agencyClientAccess   AgencyClientAccess[]
 
   @@map("users")
 }
@@ -89,6 +90,9 @@ enum OrganizationType {
   CHAMA
   SACCO
   COLLECTIVE
+  // Cosmetic only (icon/label on the dashboard) — agency mode below (see
+  // AgencyClientLink) works for any organization type, not just this one.
+  EVENT_COMPANY
   OTHER
 }
 
@@ -98,31 +102,31 @@ enum OrganizationCountry {
 }
 
 model Organization {
-  id                 String              @id @default(uuid())
-  name               String
-  type               OrganizationType
+  id                   String              @id @default(uuid())
+  name                 String
+  type                 OrganizationType
   // Determines which payment provider/currency this org's events use: KENYA →
   // Paystack (card + M-Pesa, KES). UGANDA → PawaPay (MTN/Airtel mobile money
   // only, UGX) — see PaymentProviderRegistry.
-  country            OrganizationCountry @default(KENYA)
+  country              OrganizationCountry @default(KENYA)
   // Auto-provisioned the first time a user hits "Quick collection" instead of
   // setting up a real multi-member organization — lets a solo user create an
   // event/link without an org-creation step, while everything downstream
   // (RBAC, payouts) still works exactly as it does for a real organization.
-  isPersonal         Boolean             @default(false) @map("is_personal")
+  isPersonal           Boolean             @default(false) @map("is_personal")
   // Kenya/Paystack payout destination. Set only via the bank-account onboarding
   // flow (PATCH /organizations/:id/payout).
-  gatewayWalletId    String?             @map("gateway_wallet_id")
-  payoutBankName     String?             @map("payout_bank_name")
-  payoutAccountName  String?             @map("payout_account_name")
-  payoutAccountLast4 String?             @map("payout_account_last4")
+  gatewayWalletId      String?             @map("gateway_wallet_id")
+  payoutBankName       String?             @map("payout_bank_name")
+  payoutAccountName    String?             @map("payout_account_name")
+  payoutAccountLast4   String?             @map("payout_account_last4")
   // Uganda/PawaPay payout destination. PawaPay has no subaccount-style opaque
   // token — the raw number must be kept to place a withdrawal payout later.
   // Set only via PATCH /organizations/:id/payout-mobile-money; always masked
   // to the last 4 digits in API responses.
-  payoutMobileProvider String?           @map("payout_mobile_provider")
-  payoutMobileNumber   String?           @map("payout_mobile_number")
-  createdAt          DateTime            @default(now()) @map("created_at")
+  payoutMobileProvider String?             @map("payout_mobile_provider")
+  payoutMobileNumber   String?             @map("payout_mobile_number")
+  createdAt            DateTime            @default(now()) @map("created_at")
 
   memberships OrganizationMembership[]
   events      Event[]
@@ -130,7 +134,56 @@ model Organization {
   withdrawals Withdrawal[]
   vendors     Vendor[]
 
+  // Agency mode: this org manages the client orgs on the "AgencyLinks" side,
+  // and/or is itself managed by an agency on the "ClientLinks" side (at most
+  // one, per AgencyClientLink.clientOrganizationId's uniqueness). Access
+  // grants mirror the same two directions — see AgencyClientAccess.
+  managedClients       AgencyClientLink[]   @relation("AgencyLinks")
+  managingAgencyLink   AgencyClientLink?    @relation("ClientLinks")
+  grantsMadeAsAgency   AgencyClientAccess[] @relation("AgencyGrants")
+  accessGrantsAsClient AgencyClientAccess[] @relation("ClientGrants")
+
   @@map("organizations")
+}
+
+// One agency org manages a client org — a client can only ever be managed by
+// one agency at a time, keeping "who's responsible for this client"
+// unambiguous. Existence of this row alone grants no individual access; see
+// AgencyClientAccess for that.
+model AgencyClientLink {
+  id                   String   @id @default(uuid())
+  agencyOrganizationId String   @map("agency_organization_id")
+  clientOrganizationId String   @unique @map("client_organization_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  agencyOrganization Organization @relation("AgencyLinks", fields: [agencyOrganizationId], references: [id], onDelete: Cascade)
+  clientOrganization Organization @relation("ClientLinks", fields: [clientOrganizationId], references: [id], onDelete: Cascade)
+
+  @@map("agency_client_links")
+}
+
+// Explicit grant: this agency staff member may access this specific client
+// org, at this role — checked by OrgRolesGuard as a fallback when there's no
+// direct OrganizationMembership. No row here means no access; being a member
+// of the agency does not by itself grant access to any client (per-client,
+// per-staff-member access is deliberate, not inherited from the agency role).
+model AgencyClientAccess {
+  id                   String   @id @default(uuid())
+  agencyOrganizationId String   @map("agency_organization_id")
+  clientOrganizationId String   @map("client_organization_id")
+  userId               String   @map("user_id")
+  role                 OrgRole
+  // Not a relation — matches Disbursement.initiatedBy/approvedBy's
+  // convention for "who performed this administrative action" fields.
+  grantedByUserId      String   @map("granted_by_user_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  agencyOrganization Organization @relation("AgencyGrants", fields: [agencyOrganizationId], references: [id], onDelete: Cascade)
+  clientOrganization Organization @relation("ClientGrants", fields: [clientOrganizationId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientOrganizationId])
+  @@map("agency_client_access")
 }
 
 enum EventStatus {
@@ -161,14 +214,14 @@ model Event {
   budgetingEnabled   Boolean     @default(false) @map("budgeting_enabled")
   createdAt          DateTime    @default(now()) @map("created_at")
 
-  organization    Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organization     Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   budgetCategories BudgetCategory[]
-  invoices        Invoice[]
-  transactions    Transaction[]
-  disbursements   Disbursement[]
-  auditLogs       AuditLog[]
-  allocations     Allocation[]
-  budgetApproval  BudgetApproval?
+  invoices         Invoice[]
+  transactions     Transaction[]
+  disbursements    Disbursement[]
+  auditLogs        AuditLog[]
+  allocations      Allocation[]
+  budgetApproval   BudgetApproval?
 
   @@map("events")
 }
@@ -188,7 +241,7 @@ model BudgetCategory {
   // Which vendor gets paid for this line item — set once a vendor is chosen
   // from the organization's directory; the "Pay" action (DisbursementsService)
   // requires this to be set and the event's budget to be FUNDED.
-  vendorId       String?  @map("vendor_id")
+  vendorId String? @map("vendor_id")
 
   event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   vendor        Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull)
@@ -323,15 +376,15 @@ enum TransactionStatus {
 }
 
 model Transaction {
-  id                String             @id @default(uuid())
-  invoiceId         String?            @map("invoice_id")
-  eventId           String             @map("event_id")
-  providerReference String             @unique @map("provider_reference")
-  paymentRail       PaymentRail        @map("payment_rail")
-  amountSettled     Decimal            @map("amount_settled") @db.Decimal(14, 2)
-  categoryTag       String?            @map("category_tag")
-  status            TransactionStatus  @default(PENDING)
-  timestamp         DateTime           @default(now())
+  id                String            @id @default(uuid())
+  invoiceId         String?           @map("invoice_id")
+  eventId           String            @map("event_id")
+  providerReference String            @unique @map("provider_reference")
+  paymentRail       PaymentRail       @map("payment_rail")
+  amountSettled     Decimal           @map("amount_settled") @db.Decimal(14, 2)
+  categoryTag       String?           @map("category_tag")
+  status            TransactionStatus @default(PENDING)
+  timestamp         DateTime          @default(now())
   // Set only for paymentRail: MANUAL — money an organizer/treasurer received
   // outside the app (cash, a direct mobile money transfer to the org's own
   // number) and logged so it still counts toward the event's collected total.
@@ -340,18 +393,18 @@ model Transaction {
   // the platform's balance, so it must never be withdrawable, nor allocated
   // to a budget category that DisbursementsService.pay() could later send
   // out for real.
-  recordedByUserId  String?            @map("recorded_by_user_id")
-  note              String?            @map("note")
+  recordedByUserId  String?           @map("recorded_by_user_id")
+  note              String?           @map("note")
   // The platform's cut, charged additively on top of what the payer intended
   // to give — amountSettled is always net of this (what the org is credited).
   // Zero for paymentRail: MANUAL (no real gateway charge happened).
-  platformFeeAmount Decimal            @default(0) @map("platform_fee_amount") @db.Decimal(14, 2)
+  platformFeeAmount Decimal           @default(0) @map("platform_fee_amount") @db.Decimal(14, 2)
 
-  invoice     Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
-  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  recordedBy  User?        @relation(fields: [recordedByUserId], references: [id], onDelete: SetNull)
-  refund      Refund?
-  disputes    Dispute[]
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  event      Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  recordedBy User?     @relation(fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  refund     Refund?
+  disputes   Dispute[]
 
   @@map("transactions")
 }
@@ -531,21 +584,21 @@ enum PersonalInvoiceStatus {
 }
 
 model PersonalInvoice {
-  id              String                @id @default(uuid())
-  issuerId        String                @map("issuer_id")
-  recipientName   String                @map("recipient_name")
-  recipientEmail  String?               @map("recipient_email")
-  recipientPhone  String?               @map("recipient_phone")
-  description     String?
-  amount          Decimal               @db.Decimal(14, 2)
-  amountPaid      Decimal               @default(0) @map("amount_paid") @db.Decimal(14, 2)
-  secureToken     String                @unique @map("secure_token")
-  status          PersonalInvoiceStatus @default(PENDING)
-  expiresAt       DateTime?             @map("expires_at")
-  paidAt          DateTime?             @map("paid_at")
-  createdAt       DateTime              @default(now()) @map("created_at")
+  id             String                @id @default(uuid())
+  issuerId       String                @map("issuer_id")
+  recipientName  String                @map("recipient_name")
+  recipientEmail String?               @map("recipient_email")
+  recipientPhone String?               @map("recipient_phone")
+  description    String?
+  amount         Decimal               @db.Decimal(14, 2)
+  amountPaid     Decimal               @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  secureToken    String                @unique @map("secure_token")
+  status         PersonalInvoiceStatus @default(PENDING)
+  expiresAt      DateTime?             @map("expires_at")
+  paidAt         DateTime?             @map("paid_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
 
-  issuer       User                        @relation(fields: [issuerId], references: [id], onDelete: Cascade)
+  issuer       User                         @relation(fields: [issuerId], references: [id], onDelete: Cascade)
   transactions PersonalInvoiceTransaction[]
 
   @@map("personal_invoices")
@@ -569,12 +622,12 @@ model PersonalInvoiceTransaction {
 }
 
 model AuditLog {
-  id             String   @id @default(uuid())
-  eventId        String?  @map("event_id")
-  userId         String?  @map("user_id")
-  action         String
-  payloadSnapshot Json?   @map("payload_snapshot")
-  timestamp      DateTime @default(now())
+  id              String   @id @default(uuid())
+  eventId         String?  @map("event_id")
+  userId          String?  @map("user_id")
+  action          String
+  payloadSnapshot Json?    @map("payload_snapshot")
+  timestamp       DateTime @default(now())
 
   event Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
   user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -613,15 +666,15 @@ enum OrganizationInvitationStatus {
 }
 
 model OrganizationInvitation {
-  id              String                        @id @default(uuid())
-  organizationId  String                        @map("organization_id")
+  id              String                       @id @default(uuid())
+  organizationId  String                       @map("organization_id")
   email           String
   role            OrgRole
-  invitedByUserId String                        @map("invited_by_user_id")
-  tokenHash       String                        @unique @map("token_hash")
-  status          OrganizationInvitationStatus  @default(PENDING)
-  expiresAt       DateTime                      @map("expires_at")
-  createdAt       DateTime                      @default(now()) @map("created_at")
+  invitedByUserId String                       @map("invited_by_user_id")
+  tokenHash       String                       @unique @map("token_hash")
+  status          OrganizationInvitationStatus @default(PENDING)
+  expiresAt       DateTime                     @map("expires_at")
+  createdAt       DateTime                     @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy    User         @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
@@ -645,13 +698,13 @@ enum PlatformStaffInvitationStatus {
 }
 
 model PlatformStaffInvitation {
-  id              String                         @id @default(uuid())
+  id              String                        @id @default(uuid())
   email           String
-  invitedByUserId String                         @map("invited_by_user_id")
-  tokenHash       String                         @unique @map("token_hash")
-  status          PlatformStaffInvitationStatus  @default(PENDING)
-  expiresAt       DateTime                       @map("expires_at")
-  createdAt       DateTime                       @default(now()) @map("created_at")
+  invitedByUserId String                        @map("invited_by_user_id")
+  tokenHash       String                        @unique @map("token_hash")
+  status          PlatformStaffInvitationStatus @default(PENDING)
+  expiresAt       DateTime                      @map("expires_at")
+  createdAt       DateTime                      @default(now()) @map("created_at")
 
   invitedBy User @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
 

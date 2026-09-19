@@ -56,7 +56,29 @@ export class OrgRolesGuard implements CanActivate {
       where: { userId_organizationId: { userId, organizationId } },
     });
 
-    if (!membership || !requiredRoles.includes(membership.role)) {
+    if (membership) {
+      if (!requiredRoles.includes(membership.role)) {
+        throw new ForbiddenException(
+          'Insufficient organization role for this action',
+        );
+      }
+      return true;
+    }
+
+    // No direct membership — fall back to an agency-granted role. Being a
+    // member of the agency itself grants nothing here; only an explicit
+    // AgencyClientAccess row (per client, per staff member) does. See
+    // AgencyClientAccess in schema.prisma.
+    const agencyAccess = await this.prisma.agencyClientAccess.findUnique({
+      where: {
+        userId_clientOrganizationId: {
+          userId,
+          clientOrganizationId: organizationId,
+        },
+      },
+    });
+
+    if (!agencyAccess || !requiredRoles.includes(agencyAccess.role)) {
       throw new ForbiddenException(
         'Insufficient organization role for this action',
       );

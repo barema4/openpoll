@@ -175,18 +175,43 @@ export class OrganizationsService {
 
   // Self-scoped (not org-scoped) — how a freshly logged-in user discovers
   // which organizations they belong to, and with what role, without
-  // already knowing an organization's id.
+  // already knowing an organization's id. Unions direct memberships with
+  // agency-granted client access (AgencyClientAccess) — the latter is
+  // tagged with managedViaAgency so the frontend can group them separately.
+  // A client org the caller has BOTH a direct membership in AND an agency
+  // grant for shouldn't happen in practice (agency-created clients start
+  // with only the grant), but if it ever does, the direct membership wins.
   async listForUser(userId: string) {
-    const memberships = await this.prisma.organizationMembership.findMany({
-      where: { userId },
-      include: { organization: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const [memberships, agencyGrants] = await Promise.all([
+      this.prisma.organizationMembership.findMany({
+        where: { userId },
+        include: { organization: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.agencyClientAccess.findMany({
+        where: { userId },
+        include: {
+          clientOrganization: true,
+          agencyOrganization: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
 
-    return memberships.map((membership) => ({
+    const directOrgIds = new Set(memberships.map((m) => m.organizationId));
+    const direct = memberships.map((membership) => ({
       ...maskPhone(membership.organization),
       role: membership.role,
     }));
+    const viaAgency = agencyGrants
+      .filter((grant) => !directOrgIds.has(grant.clientOrganizationId))
+      .map((grant) => ({
+        ...maskPhone(grant.clientOrganization),
+        role: grant.role,
+        managedViaAgency: grant.agencyOrganization,
+      }));
+
+    return [...direct, ...viaAgency];
   }
 
   listMembers(organizationId: string) {

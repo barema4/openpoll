@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
+import { AgencyClientsModule } from './modules/agency-clients/agency-clients.module';
 import { EventsModule } from './modules/events/events.module';
 import { BudgetCategoriesModule } from './modules/budget-categories/budget-categories.module';
 import { BudgetApprovalsModule } from './modules/budget-approvals/budget-approvals.module';
@@ -58,6 +59,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     AuditModule,
     AuthModule,
     OrganizationsModule,
+    AgencyClientsModule,
     EventsModule,
     BudgetCategoriesModule,
     BudgetApprovalsModule,

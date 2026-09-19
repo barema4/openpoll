@@ -24,8 +24,10 @@ describe('OrganizationsService.listForUser', () => {
       },
     ];
     const findMany = jest.fn().mockResolvedValue(memberships);
+    const findManyAgencyAccess = jest.fn().mockResolvedValue([]);
     const prisma = {
       organizationMembership: { findMany },
+      agencyClientAccess: { findMany: findManyAgencyAccess },
     } as unknown as PrismaService;
     const service = new OrganizationsService(
       prisma,
@@ -61,6 +63,7 @@ describe('OrganizationsService.listForUser', () => {
   it('returns an empty array for a user with no memberships', async () => {
     const prisma = {
       organizationMembership: { findMany: jest.fn().mockResolvedValue([]) },
+      agencyClientAccess: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const service = new OrganizationsService(
       prisma,
@@ -71,6 +74,83 @@ describe('OrganizationsService.listForUser', () => {
     );
 
     expect(await service.listForUser('user-2')).toEqual([]);
+  });
+
+  it('appends client orgs granted via AgencyClientAccess, tagged with managedViaAgency', async () => {
+    const prisma = {
+      organizationMembership: { findMany: jest.fn().mockResolvedValue([]) },
+      agencyClientAccess: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            role: OrgRole.TREASURER,
+            clientOrganizationId: 'client-org-1',
+            clientOrganization: { id: 'client-org-1', name: 'Client Co' },
+            agencyOrganization: { id: 'agency-org-1', name: 'Acme Events' },
+          },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.listForUser('user-1');
+
+    expect(result).toEqual([
+      {
+        id: 'client-org-1',
+        name: 'Client Co',
+        role: OrgRole.TREASURER,
+        payoutMobileNumberLast4: null,
+        managedViaAgency: { id: 'agency-org-1', name: 'Acme Events' },
+      },
+    ]);
+  });
+
+  it('prefers a direct membership over an agency grant for the same organization', async () => {
+    const prisma = {
+      organizationMembership: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            role: OrgRole.MAIN_ORGANIZER,
+            organizationId: 'org-1',
+            organization: { id: 'org-1', name: 'Org One' },
+          },
+        ]),
+      },
+      agencyClientAccess: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            role: OrgRole.AUDITOR,
+            clientOrganizationId: 'org-1',
+            clientOrganization: { id: 'org-1', name: 'Org One' },
+            agencyOrganization: { id: 'agency-org-1', name: 'Acme Events' },
+          },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.listForUser('user-1');
+
+    expect(result).toEqual([
+      {
+        id: 'org-1',
+        name: 'Org One',
+        role: OrgRole.MAIN_ORGANIZER,
+        payoutMobileNumberLast4: null,
+      },
+    ]);
   });
 });
 
