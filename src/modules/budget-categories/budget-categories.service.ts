@@ -12,6 +12,7 @@ import type { AllocateBudgetDto } from './dto/allocate-budget.dto';
 import type { AssignVendorDto } from './dto/assign-vendor.dto';
 import type { ListBudgetCategoriesQueryDto } from './dto/list-budget-categories-query.dto';
 import { paginate } from '../../common/pagination.util';
+import { isOwnerOrganization } from '../../common/agency-link.util';
 
 const EDITABLE_STATUSES: BudgetApprovalStatus[] = [
   BudgetApprovalStatus.DRAFT,
@@ -79,21 +80,18 @@ export class BudgetCategoriesService {
       });
 
       const eventOrganizationId = category.event.organizationId;
-      const belongsDirectly = vendor?.organizationId === eventOrganizationId;
-      // Also allow a vendor owned by whichever agency manages this event's
+      // Also allows a vendor owned by whichever agency manages this event's
       // org — the same cross-client roster listForOrganization() exposes.
-      const belongsViaAgency =
+      const belongs =
         !!vendor &&
-        !belongsDirectly &&
         !!eventOrganizationId &&
-        (
-          await this.prisma.agencyClientLink.findUnique({
-            where: { clientOrganizationId: eventOrganizationId },
-            select: { agencyOrganizationId: true },
-          })
-        )?.agencyOrganizationId === vendor.organizationId;
+        (await isOwnerOrganization(
+          this.prisma,
+          eventOrganizationId,
+          vendor.organizationId,
+        ));
 
-      if (!vendor || (!belongsDirectly && !belongsViaAgency)) {
+      if (!belongs) {
         throw new BadRequestException(
           "That vendor doesn't belong to this event's organization",
         );

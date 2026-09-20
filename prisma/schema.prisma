@@ -128,11 +128,12 @@ model Organization {
   payoutMobileNumber   String?             @map("payout_mobile_number")
   createdAt            DateTime            @default(now()) @map("created_at")
 
-  memberships OrganizationMembership[]
-  events      Event[]
-  invitations OrganizationInvitation[]
-  withdrawals Withdrawal[]
-  vendors     Vendor[]
+  memberships     OrganizationMembership[]
+  events          Event[]
+  invitations     OrganizationInvitation[]
+  withdrawals     Withdrawal[]
+  vendors         Vendor[]
+  budgetTemplates BudgetTemplate[]
 
   // Agency mode: this org manages the client orgs on the "AgencyLinks" side,
   // and/or is itself managed by an agency on the "ClientLinks" side (at most
@@ -271,6 +272,40 @@ model Allocation {
   allocatedBy    User?          @relation(fields: [allocatedByUserId], references: [id], onDelete: SetNull)
 
   @@map("allocations")
+}
+
+// A reusable budget breakdown an organization can apply to any of its
+// events — either hand-authored or saved from an existing event's current
+// categories. Owned by an organization (not a user), so an agency's
+// templates are shared across every client it manages, the same way its
+// vendor roster is (see VendorsService.listForOrganization).
+model BudgetTemplate {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        BudgetTemplateItem[]
+
+  @@map("budget_templates")
+}
+
+model BudgetTemplateItem {
+  id          String   @id @default(uuid())
+  templateId  String   @map("template_id")
+  name        String
+  // Exactly one of these is set. percentage-of-goal matches how the
+  // existing hardcoded wedding template already computes estimatedCost
+  // (pct * event.targetGoal); fixedAmount is the fallback for a template
+  // saved from an event with no targetGoal set.
+  percentage  Decimal? @db.Decimal(5, 4)
+  fixedAmount Decimal? @map("fixed_amount") @db.Decimal(14, 2)
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  template BudgetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("budget_template_items")
 }
 
 // ---------------------------------------------------------------------------

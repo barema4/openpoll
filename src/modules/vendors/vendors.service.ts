@@ -8,6 +8,7 @@ import {
   DisbursementStatus,
   VendorPayoutMethod,
 } from '../../../generated/prisma/enums';
+import { resolveOwnerOrganizationIds } from '../../common/agency-link.util';
 import type { CreateVendorDto } from './dto/create-vendor.dto';
 
 // Fields safe to return to the client — never the raw payoutAccountNumber/
@@ -80,13 +81,10 @@ export class VendorsService {
   // AgencyClientLink) — an agency's own vendor roster is reusable across
   // every client it manages, not re-entered per client.
   async listForOrganization(organizationId: string) {
-    const link = await this.prisma.agencyClientLink.findUnique({
-      where: { clientOrganizationId: organizationId },
-      select: { agencyOrganizationId: true },
-    });
-    const organizationIds = link
-      ? [organizationId, link.agencyOrganizationId]
-      : [organizationId];
+    const organizationIds = await resolveOwnerOrganizationIds(
+      this.prisma,
+      organizationId,
+    );
 
     return this.prisma.vendor.findMany({
       where: { organizationId: { in: organizationIds } },

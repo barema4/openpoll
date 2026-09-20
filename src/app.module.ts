@@ -14,6 +14,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { AgencyClientsModule } from './modules/agency-clients/agency-clients.module';
 import { EventsModule } from './modules/events/events.module';
 import { BudgetCategoriesModule } from './modules/budget-categories/budget-categories.module';
+import { BudgetTemplatesModule } from './modules/budget-templates/budget-templates.module';
 import { BudgetApprovalsModule } from './modules/budget-approvals/budget-approvals.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
 import { DisbursementsModule } from './modules/disbursements/disbursements.module';
@@ -62,6 +63,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     AgencyClientsModule,
     EventsModule,
     BudgetCategoriesModule,
+    BudgetTemplatesModule,
     BudgetApprovalsModule,
     VendorsModule,
     DisbursementsModule,

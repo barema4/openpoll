@@ -154,6 +154,19 @@ export class OrgRolesGuard implements CanActivate {
       return vendor?.organizationId ?? null;
     }
 
+    const budgetTemplateId = pickId(
+      params.budgetTemplateId,
+      body.budgetTemplateId,
+      query.budgetTemplateId,
+    );
+    if (budgetTemplateId) {
+      const template = await this.prisma.budgetTemplate.findUnique({
+        where: { id: budgetTemplateId },
+        select: { organizationId: true },
+      });
+      return template?.organizationId ?? null;
+    }
+
     return null;
   }
 }
