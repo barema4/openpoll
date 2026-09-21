@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { AgencyClientsModule } from './modules/agency-clients/agency-clients.module';
 import { EventsModule } from './modules/events/events.module';
+import { EventReportsModule } from './modules/event-reports/event-reports.module';
 import { BudgetCategoriesModule } from './modules/budget-categories/budget-categories.module';
 import { BudgetTemplatesModule } from './modules/budget-templates/budget-templates.module';
 import { BudgetApprovalsModule } from './modules/budget-approvals/budget-approvals.module';
@@ -62,6 +63,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     OrganizationsModule,
     AgencyClientsModule,
     EventsModule,
+    EventReportsModule,
     BudgetCategoriesModule,
     BudgetTemplatesModule,
     BudgetApprovalsModule,
