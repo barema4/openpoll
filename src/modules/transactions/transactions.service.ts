@@ -423,7 +423,9 @@ export class TransactionsService {
     const transaction = await this.prisma.transaction.findUnique({
       where: { providerReference },
       include: {
-        event: { include: { organization: { select: { name: true } } } },
+        event: {
+          include: { organization: { select: { name: true, logoUrl: true } } },
+        },
         invoice: {
           select: {
             contributorName: true,
@@ -467,7 +469,10 @@ export class TransactionsService {
       categoryTag: transaction.invoice?.categoryTag ?? null,
       event: { id: transaction.event.id, title: transaction.event.title },
       organization: transaction.event.organization
-        ? { name: transaction.event.organization.name }
+        ? {
+            name: transaction.event.organization.name,
+            logoUrl: transaction.event.organization.logoUrl,
+          }
         : null,
       invoiceRemainingBalance: remainingBalance,
     };

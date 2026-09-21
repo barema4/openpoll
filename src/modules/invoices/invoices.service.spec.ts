@@ -385,3 +385,36 @@ describe('InvoicesService.listForEvent', () => {
     ]);
   });
 });
+
+describe('InvoicesService.getEventBranding', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const config = {} as unknown as ConfigService;
+
+  it("returns the event's organization logoUrl", async () => {
+    const prisma = {
+      event: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          organization: { logoUrl: 'https://example.com/logo.png' },
+        }),
+      },
+    } as unknown as PrismaService;
+    const service = new InvoicesService(prisma, audit, config);
+
+    expect(await service.getEventBranding('event-1')).toEqual({
+      logoUrl: 'https://example.com/logo.png',
+    });
+  });
+
+  it('returns null when the event has no organization or no logo set', async () => {
+    const prisma = {
+      event: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ organization: null }),
+      },
+    } as unknown as PrismaService;
+    const service = new InvoicesService(prisma, audit, config);
+
+    expect(await service.getEventBranding('event-1')).toEqual({
+      logoUrl: null,
+    });
+  });
+});

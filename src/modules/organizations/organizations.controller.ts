@@ -14,6 +14,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
+import { SetBrandingDto } from './dto/set-branding.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -101,5 +102,15 @@ export class OrganizationsController {
       organizationId,
       dto,
     );
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER)
+  @Patch(':organizationId/branding')
+  setBranding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('organizationId') organizationId: string,
+    @Body() dto: SetBrandingDto,
+  ) {
+    return this.organizationsService.setBranding(user.id, organizationId, dto);
   }
 }

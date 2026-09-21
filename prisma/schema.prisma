@@ -126,6 +126,11 @@ model Organization {
   // to the last 4 digits in API responses.
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
+  // Shown instead of the platform's own badge on public checkout pages
+  // (pay/pledge) — set only via PATCH /organizations/:id/branding. A plain
+  // URL, same convention as Event.coverImageUrl — no upload pipeline exists
+  // in this app.
+  logoUrl              String?             @map("logo_url")
   createdAt            DateTime            @default(now()) @map("created_at")
 
   memberships     OrganizationMembership[]

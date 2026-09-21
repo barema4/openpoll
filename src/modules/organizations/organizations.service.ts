@@ -20,6 +20,7 @@ import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
+import type { SetBrandingDto } from './dto/set-branding.dto';
 import { maskPhone } from '../payouts/mask-phone.util';
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -162,6 +163,25 @@ export class OrganizationsService {
       userId,
       action: 'ORGANIZATION_MOBILE_MONEY_PAYOUT_SET',
       payload: { organizationId, provider: dto.provider },
+    });
+
+    return maskPhone(updated);
+  }
+
+  async setBranding(
+    userId: string,
+    organizationId: string,
+    dto: SetBrandingDto,
+  ) {
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { logoUrl: dto.logoUrl ?? null },
+    });
+
+    await this.audit.record({
+      userId,
+      action: 'ORGANIZATION_BRANDING_SET',
+      payload: { organizationId, logoUrl: dto.logoUrl ?? null },
     });
 
     return maskPhone(updated);

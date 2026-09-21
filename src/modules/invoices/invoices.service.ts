@@ -26,7 +26,7 @@ const INVOICE_PUBLIC_INCLUDE = {
       id: true,
       title: true,
       isPermanent: true,
-      organization: { select: { country: true } },
+      organization: { select: { country: true, logoUrl: true } },
     },
   },
 } as const;
@@ -252,6 +252,18 @@ export class InvoicesService {
 
   // Buckets single-use invoices (pledges) for an event by payment status.
   // Permanent links are excluded — they're ongoing collections, not
+  // Unauthenticated — just enough for PledgeView.vue to show the org's own
+  // logo instead of the platform's badge, the same way PayView.vue already
+  // does via the invoice-token lookup (PledgeView has no invoice yet, so it
+  // needs this event-keyed equivalent instead).
+  async getEventBranding(eventId: string) {
+    const event = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+      select: { organization: { select: { logoUrl: true } } },
+    });
+    return { logoUrl: event.organization?.logoUrl ?? null };
+  }
+
   // per-person pledges. `includePhone: false` redacts contributorPhone for
   // the public/unauthenticated summary route.
   async getContributorSummary(

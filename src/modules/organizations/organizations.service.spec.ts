@@ -491,3 +491,54 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
     });
   });
 });
+
+describe('OrganizationsService.setBranding', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
+  const config = {} as unknown as ConfigService;
+  const email = { send: jest.fn() } as unknown as EmailService;
+
+  it('sets the logo URL', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'org-1',
+      logoUrl: 'https://example.com/logo.png',
+    });
+    const prisma = { organization: { update } } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.setBranding('user-1', 'org-1', {
+      logoUrl: 'https://example.com/logo.png',
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'org-1' },
+      data: { logoUrl: 'https://example.com/logo.png' },
+    });
+    expect(result).toMatchObject({ logoUrl: 'https://example.com/logo.png' });
+  });
+
+  it('clears the logo URL when omitted', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'org-1', logoUrl: null });
+    const prisma = { organization: { update } } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    await service.setBranding('user-1', 'org-1', {});
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'org-1' },
+      data: { logoUrl: null },
+    });
+  });
+});

@@ -19,6 +19,11 @@ export class PublicEventContributorsController {
     return this.invoicesService.createPledge(eventId, dto);
   }
 
+  @Get('branding')
+  getBranding(@Param('eventId') eventId: string) {
+    return this.invoicesService.getEventBranding(eventId);
+  }
+
   // Redacted (no phone numbers) — a public "who's contributed" board.
   @Get('contributors')
   getContributors(@Param('eventId') eventId: string) {
