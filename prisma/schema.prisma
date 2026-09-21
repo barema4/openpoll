@@ -133,12 +133,13 @@ model Organization {
   logoUrl              String?             @map("logo_url")
   createdAt            DateTime            @default(now()) @map("created_at")
 
-  memberships     OrganizationMembership[]
-  events          Event[]
-  invitations     OrganizationInvitation[]
-  withdrawals     Withdrawal[]
-  vendors         Vendor[]
-  budgetTemplates BudgetTemplate[]
+  memberships             OrganizationMembership[]
+  events                  Event[]
+  invitations             OrganizationInvitation[]
+  withdrawals             Withdrawal[]
+  vendors                 Vendor[]
+  budgetTemplates         BudgetTemplate[]
+  relatedPersonalInvoices PersonalInvoice[]
 
   // Agency mode: this org manages the client orgs on the "AgencyLinks" side,
   // and/or is itself managed by an agency on the "ClientLinks" side (at most
@@ -638,8 +639,14 @@ model PersonalInvoice {
   paidAt         DateTime?             @map("paid_at")
   createdAt      DateTime              @default(now()) @map("created_at")
 
-  issuer       User                         @relation(fields: [issuerId], references: [id], onDelete: Cascade)
-  transactions PersonalInvoiceTransaction[]
+  // Purely a label — "this invoice was for planning this org's event" —
+  // for an event company billing a client it manages (see AgencyClientLink).
+  // Doesn't touch who's actually billed (issuer/recipient stay as-is).
+  relatedOrganizationId String? @map("related_organization_id")
+
+  issuer              User                         @relation(fields: [issuerId], references: [id], onDelete: Cascade)
+  relatedOrganization Organization?                @relation(fields: [relatedOrganizationId], references: [id], onDelete: SetNull)
+  transactions        PersonalInvoiceTransaction[]
 
   @@map("personal_invoices")
 }

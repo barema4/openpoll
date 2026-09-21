@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -44,6 +45,10 @@ export class PersonalInvoicesService {
   ) {}
 
   async create(userId: string, dto: CreatePersonalInvoiceDto) {
+    if (dto.relatedOrganizationId) {
+      await this.assertOrgAccess(userId, dto.relatedOrganizationId);
+    }
+
     const expiresAt = new Date(
       Date.now() +
         (dto.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
@@ -59,21 +64,53 @@ export class PersonalInvoicesService {
         amount: dto.amount,
         secureToken: randomBytes(32).toString('hex'),
         expiresAt,
+        relatedOrganizationId: dto.relatedOrganizationId,
       },
     });
 
     await this.audit.record({
       userId,
       action: 'PERSONAL_INVOICE_CREATED',
-      payload: { personalInvoiceId: invoice.id },
+      payload: {
+        personalInvoiceId: invoice.id,
+        relatedOrganizationId: dto.relatedOrganizationId ?? null,
+      },
     });
 
     return invoice;
   }
 
-  listForUser(userId: string) {
+  // Not org-scoped like the rest of this controller — this route has no
+  // OrgRolesGuard to lean on, so access to relatedOrganizationId is checked
+  // by hand: a direct membership, or an agency grant (AgencyClientAccess),
+  // the same two ways OrgRolesGuard itself would allow it.
+  private async assertOrgAccess(userId: string, organizationId: string) {
+    const [membership, agencyAccess] = await Promise.all([
+      this.prisma.organizationMembership.findUnique({
+        where: { userId_organizationId: { userId, organizationId } },
+      }),
+      this.prisma.agencyClientAccess.findUnique({
+        where: {
+          userId_clientOrganizationId: {
+            userId,
+            clientOrganizationId: organizationId,
+          },
+        },
+      }),
+    ]);
+    if (!membership && !agencyAccess) {
+      throw new ForbiddenException(
+        "You don't have access to that organization",
+      );
+    }
+  }
+
+  listForUser(userId: string, relatedOrganizationId?: string) {
     return this.prisma.personalInvoice.findMany({
-      where: { issuerId: userId },
+      where: {
+        issuerId: userId,
+        ...(relatedOrganizationId ? { relatedOrganizationId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

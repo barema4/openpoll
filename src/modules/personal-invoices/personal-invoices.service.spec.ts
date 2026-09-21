@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PersonalInvoicesService } from './personal-invoices.service';
 import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -55,6 +55,124 @@ describe('PersonalInvoicesService.create', () => {
       expect.objectContaining({
         userId: 'user-1',
         action: 'PERSONAL_INVOICE_CREATED',
+      }),
+    );
+  });
+
+  it('tags the invoice with relatedOrganizationId when the caller is a direct member', async () => {
+    const create = jest
+      .fn()
+      .mockImplementation(({ data }) => ({ id: 'pi-1', ...data }));
+    const prisma = {
+      personalInvoice: { create },
+      organizationMembership: {
+        findUnique: jest.fn().mockResolvedValue({ role: 'MAIN_ORGANIZER' }),
+      },
+      agencyClientAccess: { findUnique: jest.fn() },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      config,
+      providers,
+    );
+
+    const result = await service.create('user-1', {
+      recipientName: 'Client Co',
+      amount: 500,
+      relatedOrganizationId: 'org-1',
+    });
+
+    expect(result.relatedOrganizationId).toBe('org-1');
+  });
+
+  it('tags the invoice when the caller has agency-granted access instead of a direct membership', async () => {
+    const create = jest
+      .fn()
+      .mockImplementation(({ data }) => ({ id: 'pi-1', ...data }));
+    const prisma = {
+      personalInvoice: { create },
+      organizationMembership: { findUnique: jest.fn().mockResolvedValue(null) },
+      agencyClientAccess: {
+        findUnique: jest.fn().mockResolvedValue({ role: 'TREASURER' }),
+      },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      config,
+      providers,
+    );
+
+    const result = await service.create('user-1', {
+      recipientName: 'Client Co',
+      amount: 500,
+      relatedOrganizationId: 'client-org-1',
+    });
+
+    expect(result.relatedOrganizationId).toBe('client-org-1');
+  });
+
+  it('rejects when the caller has neither a direct membership nor agency access to relatedOrganizationId', async () => {
+    const prisma = {
+      personalInvoice: { create: jest.fn() },
+      organizationMembership: { findUnique: jest.fn().mockResolvedValue(null) },
+      agencyClientAccess: { findUnique: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      config,
+      providers,
+    );
+
+    await expect(
+      service.create('user-1', {
+        recipientName: 'Client Co',
+        amount: 500,
+        relatedOrganizationId: 'org-not-mine',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('PersonalInvoicesService.listForUser', () => {
+  it("lists all of the caller's invoices when no relatedOrganizationId filter is given", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      personalInvoice: { findMany },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      config,
+      providers,
+    );
+
+    await service.listForUser('user-1');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { issuerId: 'user-1' } }),
+    );
+  });
+
+  it('filters by relatedOrganizationId when given', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      personalInvoice: { findMany },
+    } as unknown as PrismaService;
+    const service = new PersonalInvoicesService(
+      prisma,
+      audit,
+      config,
+      providers,
+    );
+
+    await service.listForUser('user-1', 'org-1');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { issuerId: 'user-1', relatedOrganizationId: 'org-1' },
       }),
     );
   });

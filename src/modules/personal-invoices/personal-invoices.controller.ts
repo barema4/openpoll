@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PersonalInvoicesService } from './personal-invoices.service';
 import { CreatePersonalInvoiceDto } from './dto/create-personal-invoice.dto';
@@ -26,8 +34,14 @@ export class PersonalInvoicesController {
   }
 
   @Get()
-  listMine(@CurrentUser() user: AuthenticatedUser) {
-    return this.personalInvoicesService.listForUser(user.id);
+  listMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('relatedOrganizationId') relatedOrganizationId?: string,
+  ) {
+    return this.personalInvoicesService.listForUser(
+      user.id,
+      relatedOrganizationId,
+    );
   }
 
   @Get(':id')
