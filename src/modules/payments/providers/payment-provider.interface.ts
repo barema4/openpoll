@@ -87,6 +87,7 @@ export interface VerifiedTransaction {
 
 export const PAYSTACK_PROVIDER = Symbol('PAYSTACK_PROVIDER');
 export const PAWAPAY_PROVIDER = Symbol('PAWAPAY_PROVIDER');
+export const STRIPE_PROVIDER = Symbol('STRIPE_PROVIDER');
 
 // Shared across every payment provider — charging and confirming a charge.
 // Payout/bank concerns live in BankPayoutProvider below since PawaPay (or any

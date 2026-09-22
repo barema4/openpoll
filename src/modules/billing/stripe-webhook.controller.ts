@@ -13,7 +13,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import type { Request } from 'express';
-import { verifyStripeSignature } from './stripe-signature.util';
+import { verifyStripeSignature } from '../../common/stripe-signature.util';
 import { STRIPE_WEBHOOK_QUEUE } from './billing.constants';
 import type { StripeSubscriptionEvent } from './stripe-event.type';
 
@@ -44,7 +44,9 @@ export class StripeWebhookController {
     @Headers('stripe-signature') signatureHeader: string | undefined,
   ) {
     const rawBody = request.rawBody;
-    const webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.config.get<string>(
+      'STRIPE_BILLING_WEBHOOK_SECRET',
+    );
     if (
       !rawBody ||
       !webhookSecret ||

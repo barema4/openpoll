@@ -5,15 +5,18 @@ import { CheckoutController } from './checkout.controller';
 import { DepositsController } from './deposits.controller';
 import { WebhookController } from './webhook.controller';
 import { PawaPayWebhookController } from './pawapay-webhook.controller';
+import { StripePaymentsWebhookController } from './stripe-payments-webhook.controller';
 import { WebhookProcessor } from './webhook.processor';
 import { RefundWebhookProcessor } from './refund-webhook.processor';
 import { DisputeWebhookProcessor } from './dispute-webhook.processor';
 import { PaystackProvider } from './providers/paystack.provider';
 import { PawaPayProvider } from './providers/pawapay.provider';
+import { StripeProvider } from './providers/stripe.provider';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import {
   PAWAPAY_PROVIDER,
   PAYSTACK_PROVIDER,
+  STRIPE_PROVIDER,
 } from './providers/payment-provider.interface';
 import {
   WEBHOOK_QUEUE,
@@ -42,6 +45,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
     DepositsController,
     WebhookController,
     PawaPayWebhookController,
+    StripePaymentsWebhookController,
   ],
   providers: [
     PaymentsService,
@@ -50,9 +54,11 @@ import { TransactionsModule } from '../transactions/transactions.module';
     DisputeWebhookProcessor,
     PaystackProvider,
     PawaPayProvider,
+    StripeProvider,
     PaymentProviderRegistry,
     { provide: PAYSTACK_PROVIDER, useExisting: PaystackProvider },
     { provide: PAWAPAY_PROVIDER, useExisting: PawaPayProvider },
+    { provide: STRIPE_PROVIDER, useExisting: StripeProvider },
   ],
   // PAYSTACK_PROVIDER stays exported for the Kenya-only, bank-shaped
   // consumer (PayoutsModule) that has no equivalent PawaPay path.

@@ -39,6 +39,23 @@ export const SUPPORTED_COUNTRIES: Record<string, SupportedCountry> = {
     provider: 'PAWAPAY',
     chargeShape: 'MOBILE_MONEY_PUSH',
   },
+  // First two Stripe-backed countries — donor charging only for now (see
+  // StripeProvider); Stripe Connect payout onboarding lands in a later
+  // phase, so orgs here have their whole charge land in the platform's own
+  // Stripe balance until then, same fallback already established for an
+  // unconfigured Paystack payout destination.
+  US: {
+    label: 'United States',
+    currency: 'USD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  GB: {
+    label: 'United Kingdom',
+    currency: 'GBP',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
 };
 
 export const DEFAULT_COUNTRY_CODE = 'KE';
