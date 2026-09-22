@@ -31,6 +31,9 @@ describe('PersonalInvoicesService.create', () => {
           return created;
         }),
       },
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
+      },
     } as unknown as PrismaService;
 
     const service = new PersonalInvoicesService(
@@ -69,6 +72,9 @@ describe('PersonalInvoicesService.create', () => {
         findUnique: jest.fn().mockResolvedValue({ role: 'MAIN_ORGANIZER' }),
       },
       agencyClientAccess: { findUnique: jest.fn() },
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
+      },
     } as unknown as PrismaService;
     const service = new PersonalInvoicesService(
       prisma,
@@ -95,6 +101,9 @@ describe('PersonalInvoicesService.create', () => {
       organizationMembership: { findUnique: jest.fn().mockResolvedValue(null) },
       agencyClientAccess: {
         findUnique: jest.fn().mockResolvedValue({ role: 'TREASURER' }),
+      },
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
       },
     } as unknown as PrismaService;
     const service = new PersonalInvoicesService(
@@ -311,7 +320,7 @@ describe('PersonalInvoicesService.initializeCheckout', () => {
           amount: '1000',
           issuer: {
             gatewayWalletId: 'ACCT_123',
-            country: 'KENYA',
+            country: 'KE',
             payoutMobileProvider: null,
             payoutMobileNumber: null,
           },

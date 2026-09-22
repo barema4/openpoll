@@ -4,10 +4,10 @@ import type { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import {
-  OrganizationCountry,
   PersonalInvoiceStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
+import { DEFAULT_COUNTRY_CODE } from '../../config/supported-countries';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from './personal-invoices.constants';
 import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from '../payments/providers/payment-provider.interface';
@@ -126,7 +126,7 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
       select: { issuer: { select: { country: true } } },
     });
     return this.providers.forCountry(
-      invoice.issuer?.country ?? OrganizationCountry.KENYA,
+      invoice.issuer?.country ?? DEFAULT_COUNTRY_CODE,
     );
   }
 }

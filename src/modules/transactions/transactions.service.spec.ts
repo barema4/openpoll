@@ -118,7 +118,7 @@ describe('TransactionsService.refund', () => {
       amountSettled: '1000',
       platformFeeAmount: '15',
       status: TransactionStatus.SUCCESS,
-      event: { organization: { country: 'KENYA' } },
+      event: { organization: { country: 'KE' } },
       ...overrides,
     };
   }
@@ -171,7 +171,7 @@ describe('TransactionsService.refund', () => {
 
   it('initiates a PawaPay refund for a Uganda transaction with the gross amount in UGX', async () => {
     const transaction = makeTransaction({
-      event: { organization: { country: 'UGANDA' } },
+      event: { organization: { country: 'UG' } },
     });
     const refundUpsert = jest.fn().mockResolvedValue({ id: 'refund-1' });
     const prisma = {

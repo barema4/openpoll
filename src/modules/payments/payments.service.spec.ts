@@ -34,7 +34,7 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
       contributorPhone: null,
       event: {
         gatewayWalletId: 'ACCT_123',
-        organization: { country: 'KENYA', gatewayWalletId: null },
+        organization: { country: 'KE', gatewayWalletId: null },
       },
       ...overrides,
     };
@@ -123,7 +123,7 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
     const invoice = makeInvoice({
       event: {
         gatewayWalletId: null,
-        organization: { country: 'UGANDA', gatewayWalletId: null },
+        organization: { country: 'UG', gatewayWalletId: null },
       },
     });
     const prisma = makePrisma(invoice);
@@ -171,7 +171,7 @@ describe('PaymentsService.initiateDeposit', () => {
     const prisma = makePrismaForEvent({
       id: 'event-1',
       gatewayWalletId: null,
-      organization: { country: 'UGANDA', gatewayWalletId: null },
+      organization: { country: 'UG', gatewayWalletId: null },
     });
     const service = new PaymentsService(
       prisma,
@@ -207,7 +207,7 @@ describe('PaymentsService.initiateDeposit', () => {
     const prisma = makePrismaForEvent({
       id: 'event-1',
       gatewayWalletId: null,
-      organization: { country: 'UGANDA', gatewayWalletId: null },
+      organization: { country: 'UG', gatewayWalletId: null },
     });
     const service = new PaymentsService(
       prisma,
@@ -233,7 +233,7 @@ describe('PaymentsService.initiateDeposit', () => {
     const prisma = makePrismaForEvent({
       id: 'event-1',
       gatewayWalletId: 'ACCT_123',
-      organization: { country: 'KENYA', gatewayWalletId: null },
+      organization: { country: 'KE', gatewayWalletId: null },
     });
     const service = new PaymentsService(
       prisma,

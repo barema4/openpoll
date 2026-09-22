@@ -13,11 +13,14 @@ import {
   BudgetApprovalStatus,
   DisbursementStatus,
   DisbursementTransferType,
-  OrganizationCountry,
   PaymentRail,
   TransactionStatus,
   VendorPayoutMethod,
 } from '../../../generated/prisma/enums';
+import {
+  DEFAULT_COUNTRY_CODE,
+  getSupportedCountry,
+} from '../../config/supported-countries';
 import type { ListDisbursementsQueryDto } from './dto/list-disbursements-query.dto';
 import { paginate } from '../../common/pagination.util';
 import { isTransactionConflictError } from '../../common/prisma-conflict.util';
@@ -190,15 +193,16 @@ export class DisbursementsService {
           }
 
           const organization = category.event.organization;
-          const isUgandaMobileMoney =
-            organization?.country === OrganizationCountry.UGANDA &&
+          const isPawaPayMobileMoney =
+            getSupportedCountry(organization?.country ?? DEFAULT_COUNTRY_CODE)
+              .provider === 'PAWAPAY' &&
             category.vendor.payoutMethod === VendorPayoutMethod.MOBILE_MONEY &&
             !!category.vendor.payoutMobileProvider &&
             !!category.vendor.payoutMobileNumber;
 
-          if (!isUgandaMobileMoney) {
+          if (!isPawaPayMobileMoney) {
             throw new BadRequestException(
-              'Vendor payouts for Kenya are not available yet',
+              "Vendor payouts are not available yet for this organization's country",
             );
           }
 

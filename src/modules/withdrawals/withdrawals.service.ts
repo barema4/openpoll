@@ -11,11 +11,11 @@ import type { MobileMoneyProvider } from '../payments/providers/payment-provider
 import { Prisma } from '../../../generated/prisma/client';
 import {
   DisbursementStatus,
-  OrganizationCountry,
   PaymentRail,
   TransactionStatus,
   WithdrawalStatus,
 } from '../../../generated/prisma/enums';
+import { getSupportedCountry } from '../../config/supported-countries';
 import type { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { isTransactionConflictError } from '../../common/prisma-conflict.util';
 
@@ -111,9 +111,9 @@ export class WithdrawalsService {
         payoutMobileNumber: true,
       },
     });
-    if (organization.country !== OrganizationCountry.UGANDA) {
+    if (getSupportedCountry(organization.country).provider !== 'PAWAPAY') {
       throw new BadRequestException(
-        'Withdrawals are only available for Uganda organizations',
+        'Withdrawals are only available for organizations on the PawaPay payout rail',
       );
     }
     if (
@@ -135,7 +135,7 @@ export class WithdrawalsService {
     const result = await this.pawapay.initiatePayout({
       payoutId,
       amount: dto.amount,
-      currency: 'UGX',
+      currency: getSupportedCountry(organization.country).currency,
       phoneNumber: organization.payoutMobileNumber,
       provider: organization.payoutMobileProvider as MobileMoneyProvider,
     });

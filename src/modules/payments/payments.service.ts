@@ -8,10 +8,11 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import type { Prisma } from '../../../generated/prisma/client';
+import { InvoiceStatus } from '../../../generated/prisma/enums';
 import {
-  InvoiceStatus,
-  OrganizationCountry,
-} from '../../../generated/prisma/enums';
+  DEFAULT_COUNTRY_CODE,
+  getSupportedCountry,
+} from '../../config/supported-countries';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import {
   MOBILE_MONEY_PROVIDERS,
@@ -66,9 +67,10 @@ export class PaymentsService {
     await this.captureContributorIdentity(invoice, dto);
 
     const reference = randomUUID();
-    const country =
-      invoice.event.organization?.country ?? OrganizationCountry.KENYA;
-    const provider = this.providers.forCountry(country);
+    const countryCode =
+      invoice.event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    const { chargeShape, currency } = getSupportedCountry(countryCode);
+    const provider = this.providers.forCountry(countryCode);
 
     const checkoutBaseUrl = this.config
       .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
@@ -87,17 +89,17 @@ export class PaymentsService {
       platformFeeAmount,
     };
 
-    if (country === OrganizationCountry.UGANDA) {
+    if (chargeShape === 'MOBILE_MONEY_PUSH') {
       if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
         throw new BadRequestException(
-          'A phone number and network (MTN or Airtel) are required to pay this Uganda event',
+          'A phone number and network (MTN or Airtel) are required to pay this event',
         );
       }
       return provider.initializeCharge({
         email: dto.email,
         amount: grossAmount,
         reference,
-        currency: 'UGX',
+        currency,
         metadata,
         mobileMoney: {
           phoneNumber: dto.phoneNumber,
@@ -114,6 +116,7 @@ export class PaymentsService {
       email: dto.email,
       amount: grossAmount,
       reference,
+      currency,
       subaccountCode: subaccountCode ?? undefined,
       platformFeeAmount,
       metadata,
@@ -145,21 +148,22 @@ export class PaymentsService {
     }
 
     const reference = randomUUID();
-    const country = event.organization?.country ?? OrganizationCountry.KENYA;
-    const provider = this.providers.forCountry(country);
+    const countryCode = event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    const { chargeShape, currency } = getSupportedCountry(countryCode);
+    const provider = this.providers.forCountry(countryCode);
     const metadata = { eventId, platformFeeAmount: 0 };
 
-    if (country === OrganizationCountry.UGANDA) {
+    if (chargeShape === 'MOBILE_MONEY_PUSH') {
       if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
         throw new BadRequestException(
-          'A phone number and network (MTN or Airtel) are required to deposit into this Uganda event',
+          'A phone number and network (MTN or Airtel) are required to deposit into this event',
         );
       }
       const result = await provider.initializeCharge({
         email: user.email,
         amount: dto.amount,
         reference,
-        currency: 'UGX',
+        currency,
         metadata,
         mobileMoney: {
           phoneNumber: dto.phoneNumber,
@@ -185,6 +189,7 @@ export class PaymentsService {
       email: user.email,
       amount: dto.amount,
       reference,
+      currency,
       subaccountCode: subaccountCode ?? undefined,
       metadata,
       callbackUrl: `${checkoutBaseUrl}/receipt`,

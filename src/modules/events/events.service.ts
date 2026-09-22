@@ -13,6 +13,10 @@ import {
   TransactionStatus,
 } from '../../../generated/prisma/enums';
 import type { EventStatus } from '../../../generated/prisma/enums';
+import {
+  DEFAULT_COUNTRY_CODE,
+  currencyForCountry,
+} from '../../config/supported-countries';
 
 @Injectable()
 export class EventsService {
@@ -25,6 +29,11 @@ export class EventsService {
   ) {}
 
   async create(userId: string, dto: CreateEventDto) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: dto.organizationId },
+      select: { country: true },
+    });
+
     const event = await this.prisma.event.create({
       data: {
         organizationId: dto.organizationId,
@@ -32,6 +41,9 @@ export class EventsService {
         description: dto.description,
         coverImageUrl: dto.coverImageUrl,
         targetGoal: dto.targetGoal,
+        currency: currencyForCountry(
+          organization?.country ?? DEFAULT_COUNTRY_CODE,
+        ),
         isPermanent: dto.isPermanent ?? false,
       },
     });

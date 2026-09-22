@@ -5,9 +5,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import {
   InvoiceStatus,
-  OrganizationCountry,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
+import { DEFAULT_COUNTRY_CODE } from '../../config/supported-countries';
 import { WEBHOOK_QUEUE } from './payments.constants';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from './providers/payment-provider.interface';
@@ -83,6 +83,10 @@ export class WebhookProcessor extends WorkerHost {
     // any charge-time record we could otherwise diff against.
     const platformFeeAmount = event.platformFeeAmount ?? 0;
     const netAmountSettled = amountSettled - platformFeeAmount;
+    const { currency } = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+      select: { currency: true },
+    });
 
     const transaction = await this.prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
@@ -92,6 +96,7 @@ export class WebhookProcessor extends WorkerHost {
           providerReference: event.providerReference,
           paymentRail: event.paymentRail,
           amountSettled: netAmountSettled,
+          currency,
           platformFeeAmount,
           status: event.status,
         },
@@ -162,7 +167,7 @@ export class WebhookProcessor extends WorkerHost {
     // (Kenya) — should never happen in practice since events always start
     // with an organization.
     return this.providers.forCountry(
-      event.organization?.country ?? OrganizationCountry.KENYA,
+      event.organization?.country ?? DEFAULT_COUNTRY_CODE,
     );
   }
 }

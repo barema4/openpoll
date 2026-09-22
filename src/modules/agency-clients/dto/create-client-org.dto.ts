@@ -1,8 +1,6 @@
-import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import {
-  OrganizationCountry,
-  OrganizationType,
-} from '../../../../generated/prisma/enums';
+import { IsEnum, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { OrganizationType } from '../../../../generated/prisma/enums';
+import { SUPPORTED_COUNTRIES } from '../../../config/supported-countries';
 
 export class CreateClientOrgDto {
   @IsString()
@@ -13,6 +11,6 @@ export class CreateClientOrgDto {
   type!: OrganizationType;
 
   @IsOptional()
-  @IsEnum(OrganizationCountry)
-  country?: OrganizationCountry;
+  @IsIn(Object.keys(SUPPORTED_COUNTRIES))
+  country?: string;
 }

@@ -19,6 +19,9 @@ describe('EventsService.create', () => {
       .mockResolvedValue({ id: 'event-1', title: 'Fundraiser' });
     const prisma = {
       event: { create: eventCreate },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ country: 'KE' }),
+      },
     } as unknown as PrismaService;
     const invoiceCreate = jest
       .fn()
@@ -55,6 +58,9 @@ describe('EventsService.createQuick', () => {
       event: { create: eventCreate },
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ name: 'Jane Doe' }),
+      },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ country: 'KE' }),
       },
     } as unknown as PrismaService;
     const invoices = {

@@ -15,11 +15,14 @@ import {
   DisputeStatus,
   InvoiceStatus,
   OrgRole,
-  OrganizationCountry,
   PaymentRail,
   RefundStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
+import {
+  DEFAULT_COUNTRY_CODE,
+  getSupportedCountry,
+} from '../../config/supported-countries';
 import type { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
 import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { paginate } from '../../common/pagination.util';
@@ -102,20 +105,21 @@ export class TransactionsService {
 
     const grossAmount =
       Number(transaction.amountSettled) + Number(transaction.platformFeeAmount);
-    const country =
-      transaction.event.organization?.country ?? OrganizationCountry.KENYA;
+    const countryCode =
+      transaction.event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    const { provider, currency } = getSupportedCountry(countryCode);
 
     let providerReference: string | undefined;
     let accepted: boolean;
     let failureMessage: string | undefined;
 
-    if (country === OrganizationCountry.UGANDA) {
+    if (provider === 'PAWAPAY') {
       const refundId = randomUUID();
       const result = await this.pawapay.initiateRefund({
         refundId,
         depositId: transaction.providerReference,
         amount: grossAmount,
-        currency: 'UGX',
+        currency,
       });
       providerReference = refundId;
       accepted = result.accepted;

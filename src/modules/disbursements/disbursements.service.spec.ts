@@ -4,7 +4,6 @@ import { Prisma } from '../../../generated/prisma/client';
 import {
   BudgetApprovalStatus,
   DisbursementStatus,
-  OrganizationCountry,
   VendorPayoutMethod,
 } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -25,7 +24,7 @@ describe('DisbursementsService.pay', () => {
         payoutMobileNumber: '256771234567',
       },
       event: {
-        organization: { country: OrganizationCountry.UGANDA },
+        organization: { country: 'UG' },
         budgetApproval: { status: BudgetApprovalStatus.FUNDED },
       },
       ...overrides,
@@ -156,7 +155,7 @@ describe('DisbursementsService.pay', () => {
     const { service } = makeService({
       category: makeCategory({
         event: {
-          organization: { country: OrganizationCountry.UGANDA },
+          organization: { country: 'UG' },
           budgetApproval: { status: BudgetApprovalStatus.APPROVED },
         },
       }),
@@ -190,7 +189,7 @@ describe('DisbursementsService.pay', () => {
           payoutMobileNumber: null,
         },
         event: {
-          organization: { country: OrganizationCountry.KENYA },
+          organization: { country: 'KE' },
           budgetApproval: { status: BudgetApprovalStatus.FUNDED },
         },
       }),

@@ -4,7 +4,6 @@ import { PaystackProvider } from '../payments/providers/paystack.provider';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
 import {
   DisbursementStatus,
-  OrganizationCountry,
   PaymentRail,
   TransactionStatus,
   WithdrawalStatus,
@@ -37,7 +36,7 @@ export class ReconciliationService {
       this.prisma.transaction.aggregate({
         where: {
           status: TransactionStatus.SUCCESS,
-          event: { organization: { country: OrganizationCountry.KENYA } },
+          event: { organization: { country: 'KE' } },
         },
         _sum: { platformFeeAmount: true },
       }),
@@ -66,13 +65,13 @@ export class ReconciliationService {
           where: {
             status: TransactionStatus.SUCCESS,
             paymentRail: { not: PaymentRail.MANUAL },
-            event: { organization: { country: OrganizationCountry.UGANDA } },
+            event: { organization: { country: 'UG' } },
           },
           _sum: { amountSettled: true },
         }),
         this.prisma.withdrawal.aggregate({
           where: {
-            organization: { country: OrganizationCountry.UGANDA },
+            organization: { country: 'UG' },
             status: {
               in: [WithdrawalStatus.PROCESSING, WithdrawalStatus.COMPLETED],
             },
@@ -81,7 +80,7 @@ export class ReconciliationService {
         }),
         this.prisma.disbursement.aggregate({
           where: {
-            event: { organization: { country: OrganizationCountry.UGANDA } },
+            event: { organization: { country: 'UG' } },
             status: {
               in: [
                 DisbursementStatus.PENDING,
@@ -95,7 +94,7 @@ export class ReconciliationService {
         this.prisma.transaction.aggregate({
           where: {
             status: TransactionStatus.SUCCESS,
-            event: { organization: { country: OrganizationCountry.UGANDA } },
+            event: { organization: { country: 'UG' } },
           },
           _sum: { platformFeeAmount: true },
         }),

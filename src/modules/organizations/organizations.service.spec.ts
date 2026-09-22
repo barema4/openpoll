@@ -1,5 +1,5 @@
 import { OrganizationsService } from './organizations.service';
-import { OrgRole, OrganizationCountry } from '../../../generated/prisma/enums';
+import { OrgRole } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PayoutsService } from '../payouts/payouts.service';
@@ -218,7 +218,7 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
     const create = jest.fn().mockResolvedValue({
       id: 'org-ug',
       name: "Jane Doe's Workspace (Uganda)",
-      country: 'UGANDA',
+      country: 'UG',
     });
     const prisma = {
       organizationMembership: { findFirst },
@@ -235,14 +235,14 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
     const result = await service.getOrCreatePersonalOrg(
       'user-1',
       'Jane Doe',
-      OrganizationCountry.UGANDA,
+      'UG',
     );
 
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           userId: 'user-1',
-          organization: { isPersonal: true, country: 'UGANDA' },
+          organization: { isPersonal: true, country: 'UG' },
         },
       }),
     );
@@ -250,7 +250,7 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           name: "Jane Doe's Workspace (Uganda)",
-          country: 'UGANDA',
+          country: 'UG',
           isPersonal: true,
         }),
       }),
@@ -258,7 +258,7 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
     expect(result).toEqual({
       id: 'org-ug',
       name: "Jane Doe's Workspace (Uganda)",
-      country: 'UGANDA',
+      country: 'UG',
     });
   });
 });
@@ -433,7 +433,7 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
   it('rejects a Kenya organization', async () => {
     const prisma = {
       organization: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KENYA' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
       },
     } as unknown as PrismaService;
     const service = new OrganizationsService(
@@ -449,7 +449,9 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
         provider: 'MTN_MOMO_UGA',
         phoneNumber: '256771234567',
       }),
-    ).rejects.toThrow(/only available for Uganda/i);
+    ).rejects.toThrow(
+      /only available for organizations on the PawaPay payout rail/i,
+    );
   });
 
   it('stores the provider/number and masks the number to last 4 in the response', async () => {
@@ -459,7 +461,7 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
     });
     const prisma = {
       organization: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UGANDA' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UG' }),
         update,
       },
     } as unknown as PrismaService;

@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
-import { OrganizationCountry } from '../../../generated/prisma/enums';
 import type { PlatformRole } from '../../../generated/prisma/enums';
+import { getSupportedCountry } from '../../config/supported-countries';
 import { resolveEffectivePlatformRole } from '../../common/guards/resolve-effective-platform-role.util';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
@@ -161,9 +161,9 @@ export class UsersService {
       where: { id: userId },
       select: { country: true },
     });
-    if (user.country !== OrganizationCountry.UGANDA) {
+    if (getSupportedCountry(user.country).provider !== 'PAWAPAY') {
       throw new ForbiddenException(
-        'Mobile money payouts are only available when your account country is Uganda',
+        'Mobile money payouts are only available for accounts on the PawaPay payout rail',
       );
     }
 

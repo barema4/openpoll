@@ -1,11 +1,11 @@
 import {
-  IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
-import { OrganizationCountry } from '../../../../generated/prisma/enums';
+import { SUPPORTED_COUNTRIES } from '../../../config/supported-countries';
 
 // Backs "Quick collection" — no organizationId, because there isn't
 // necessarily one yet. See EventsService.createQuick().
@@ -22,10 +22,11 @@ export class CreateQuickEventDto {
   @IsNumber()
   targetGoal?: number;
 
-  // Determines which personal org this reuses/creates (Kenya/Paystack vs
-  // Uganda/PawaPay) — a user can end up with one personal org per country
-  // they've quick-collected for. Defaults to Kenya if omitted.
+  // ISO-3166-1 alpha-2 code — determines which personal org this
+  // reuses/creates (see SUPPORTED_COUNTRIES) — a user can end up with one
+  // personal org per country they've quick-collected for. Defaults to
+  // Kenya if omitted.
   @IsOptional()
-  @IsEnum(OrganizationCountry)
-  country?: OrganizationCountry;
+  @IsIn(Object.keys(SUPPORTED_COUNTRIES))
+  country?: string;
 }

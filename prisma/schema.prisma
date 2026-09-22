@@ -28,10 +28,15 @@ model User {
   payoutBankName       String?             @map("payout_bank_name")
   payoutAccountName    String?             @map("payout_account_name")
   payoutAccountLast4   String?             @map("payout_account_last4")
-  // Determines which payment provider/currency this user's personal invoices
-  // use — same idea as Organization.country, just at the individual level
-  // since personal invoicing needs no organization at all.
-  country              OrganizationCountry @default(KENYA)
+  // ISO-3166-1 alpha-2 country code (e.g. "KE", "UG") — determines which
+  // payment provider/currency this user's personal invoices use, via
+  // SUPPORTED_COUNTRIES (src/config/supported-countries.ts). Same idea as
+  // Organization.country, just at the individual level since personal
+  // invoicing needs no organization at all. Was a closed OrganizationCountry
+  // enum (KENYA|UGANDA) until the worldwide payment-layer redesign — a plain
+  // string plus a code-level lookup table means a new country is a config
+  // entry, not a schema migration.
+  country              String              @default("KE")
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
   // Platform-operator access (reconciliation, staff management) — distinct
@@ -96,19 +101,16 @@ enum OrganizationType {
   OTHER
 }
 
-enum OrganizationCountry {
-  KENYA
-  UGANDA
-}
-
 model Organization {
   id                   String              @id @default(uuid())
   name                 String
   type                 OrganizationType
-  // Determines which payment provider/currency this org's events use: KENYA →
-  // Paystack (card + M-Pesa, KES). UGANDA → PawaPay (MTN/Airtel mobile money
-  // only, UGX) — see PaymentProviderRegistry.
-  country              OrganizationCountry @default(KENYA)
+  // ISO-3166-1 alpha-2 country code — determines which payment
+  // provider/currency this org's events use, via SUPPORTED_COUNTRIES
+  // (src/config/supported-countries.ts). Was a closed OrganizationCountry
+  // enum (KENYA|UGANDA) until the worldwide payment-layer redesign; see
+  // User.country's comment for why this is a plain string now.
+  country              String              @default("KE")
   // Auto-provisioned the first time a user hits "Quick collection" instead of
   // setting up a real multi-member organization — lets a solo user create an
   // event/link without an org-creation step, while everything downstream
@@ -215,6 +217,11 @@ model Event {
   description        String?
   coverImageUrl      String?     @map("cover_image_url")
   targetGoal         Decimal?    @map("target_goal") @db.Decimal(14, 2)
+  // ISO 4217 code, set at creation from the organization's country (see
+  // SUPPORTED_COUNTRIES) — stored explicitly rather than derived at read
+  // time, so a display stays correct even if a country's provider/currency
+  // mapping ever changes later.
+  currency           String      @default("KES")
   isPermanent        Boolean     @default(false) @map("is_permanent")
   // Optional override of the organization's payout destination. Set only via
   // the bank-account onboarding flow (PATCH /events/:id/payout).
@@ -391,6 +398,9 @@ model Invoice {
   // Running total of SUCCESS transactions applied to this invoice. Only
   // meaningful for single-use invoices; permanent links leave this at 0.
   amountPaid       Decimal       @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  // ISO 4217 code, copied from the parent event at creation — see
+  // Event.currency's comment.
+  currency         String        @default("KES")
   status           InvoiceStatus @default(PENDING)
   expiresAt        DateTime?     @map("expires_at")
   categoryTag      String?       @map("category_tag")
@@ -431,6 +441,9 @@ model Transaction {
   providerReference String            @unique @map("provider_reference")
   paymentRail       PaymentRail       @map("payment_rail")
   amountSettled     Decimal           @map("amount_settled") @db.Decimal(14, 2)
+  // ISO 4217 code, copied from the event at settlement time — see
+  // Event.currency's comment.
+  currency          String            @default("KES")
   categoryTag       String?           @map("category_tag")
   status            TransactionStatus @default(PENDING)
   timestamp         DateTime          @default(now())
@@ -641,6 +654,9 @@ model PersonalInvoice {
   description    String?
   amount         Decimal               @db.Decimal(14, 2)
   amountPaid     Decimal               @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  // ISO 4217 code, copied from the issuing user's country at creation — see
+  // Event.currency's comment.
+  currency       String                @default("KES")
   secureToken    String                @unique @map("secure_token")
   status         PersonalInvoiceStatus @default(PENDING)
   expiresAt      DateTime?             @map("expires_at")

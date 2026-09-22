@@ -12,10 +12,13 @@ import { EmailService } from '../../email/email.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import {
   OrgRole,
-  OrganizationCountry,
   OrganizationInvitationStatus,
   OrganizationType,
 } from '../../../generated/prisma/enums';
+import {
+  DEFAULT_COUNTRY_CODE,
+  getSupportedCountry,
+} from '../../config/supported-countries';
 import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
@@ -44,7 +47,7 @@ export class OrganizationsService {
       data: {
         name: dto.name,
         type: dto.type,
-        country: dto.country ?? OrganizationCountry.KENYA,
+        country: dto.country ?? DEFAULT_COUNTRY_CODE,
         memberships: {
           create: { userId, role: OrgRole.MAIN_ORGANIZER },
         },
@@ -71,7 +74,7 @@ export class OrganizationsService {
   async getOrCreatePersonalOrg(
     userId: string,
     userName: string,
-    country: OrganizationCountry = OrganizationCountry.KENYA,
+    country: string = DEFAULT_COUNTRY_CODE,
   ) {
     const existing = await this.prisma.organizationMembership.findFirst({
       where: { userId, organization: { isPersonal: true, country } },
@@ -82,9 +85,9 @@ export class OrganizationsService {
     const organization = await this.prisma.organization.create({
       data: {
         name:
-          country === OrganizationCountry.UGANDA
-            ? `${userName}'s Workspace (Uganda)`
-            : `${userName}'s Workspace`,
+          country === DEFAULT_COUNTRY_CODE
+            ? `${userName}'s Workspace`
+            : `${userName}'s Workspace (${getSupportedCountry(country).label})`,
         type: OrganizationType.OTHER,
         country,
         isPersonal: true,
@@ -145,9 +148,9 @@ export class OrganizationsService {
       where: { id: organizationId },
       select: { country: true },
     });
-    if (organization.country !== OrganizationCountry.UGANDA) {
+    if (getSupportedCountry(organization.country).provider !== 'PAWAPAY') {
       throw new ForbiddenException(
-        'Mobile money payouts are only available for Uganda organizations',
+        'Mobile money payouts are only available for organizations on the PawaPay payout rail',
       );
     }
 

@@ -1,11 +1,11 @@
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
-import { OrganizationCountry } from '../../../../generated/prisma/enums';
+import { SUPPORTED_COUNTRIES } from '../../../config/supported-countries';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -17,9 +17,10 @@ export class UpdateProfileDto {
   @IsEmail()
   email?: string;
 
-  // Determines which payment provider personal invoices use. Only settable
-  // while no payout destination is configured yet — see UsersService.
+  // ISO-3166-1 alpha-2 code — determines which payment provider personal
+  // invoices use (see SUPPORTED_COUNTRIES). Only settable while no payout
+  // destination is configured yet — see UsersService.
   @IsOptional()
-  @IsEnum(OrganizationCountry)
-  country?: OrganizationCountry;
+  @IsIn(Object.keys(SUPPORTED_COUNTRIES))
+  country?: string;
 }

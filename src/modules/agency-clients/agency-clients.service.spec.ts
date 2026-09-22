@@ -4,11 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AgencyClientsService } from './agency-clients.service';
-import {
-  OrgRole,
-  OrganizationCountry,
-  OrganizationType,
-} from '../../../generated/prisma/enums';
+import { OrgRole, OrganizationType } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 
@@ -35,14 +31,14 @@ describe('AgencyClientsService.createClient', () => {
     const result = await service.createClient('agency-org-1', 'user-1', {
       name: 'Client Co',
       type: OrganizationType.OTHER,
-      country: OrganizationCountry.KENYA,
+      country: 'KE',
     });
 
     expect(organizationCreate).toHaveBeenCalledWith({
       data: {
         name: 'Client Co',
         type: OrganizationType.OTHER,
-        country: OrganizationCountry.KENYA,
+        country: 'KE',
       },
     });
     expect(agencyClientLinkCreate).toHaveBeenCalledWith({
@@ -88,7 +84,7 @@ describe('AgencyClientsService.createClient', () => {
     const result = await service.createClient('agency-org-1', 'user-1', {
       name: 'Client Co 2',
       type: OrganizationType.OTHER,
-      country: OrganizationCountry.KENYA,
+      country: 'KE',
     });
 
     expect(result).toEqual(
@@ -112,7 +108,7 @@ describe('AgencyClientsService.createClient', () => {
       service.createClient('agency-org-1', 'user-1', {
         name: 'Client Co 2',
         type: OrganizationType.OTHER,
-        country: OrganizationCountry.KENYA,
+        country: 'KE',
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
@@ -133,7 +129,7 @@ describe('AgencyClientsService.createClient', () => {
       service.createClient('agency-org-1', 'user-1', {
         name: 'Client Co 2',
         type: OrganizationType.OTHER,
-        country: OrganizationCountry.KENYA,
+        country: 'KE',
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });

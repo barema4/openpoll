@@ -34,7 +34,7 @@ describe('PersonalInvoiceWebhookProcessor', () => {
       updateMany: jest.fn(),
       findUniqueOrThrow: jest
         .fn()
-        .mockResolvedValue({ issuer: { country: 'KENYA' } }),
+        .mockResolvedValue({ issuer: { country: 'KE' } }),
     };
     const prisma = {
       personalInvoiceTransaction,

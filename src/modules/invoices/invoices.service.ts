@@ -336,6 +336,10 @@ export class InvoicesService {
           Date.now() +
             (params.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
         );
+    const event = await this.prisma.event.findUniqueOrThrow({
+      where: { id: params.eventId },
+      select: { currency: true },
+    });
 
     return this.prisma.invoice.create({
       data: {
@@ -344,6 +348,7 @@ export class InvoicesService {
         contributorEmail: params.contributorEmail,
         contributorPhone: params.contributorPhone,
         amountRequested: params.amountRequested,
+        currency: event.currency,
         categoryTag: params.categoryTag,
         source: params.source,
         secureToken: randomBytes(32).toString('hex'),

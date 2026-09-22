@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
-import { OrgRole, OrganizationCountry } from '../../../generated/prisma/enums';
+import { OrgRole } from '../../../generated/prisma/enums';
+import { DEFAULT_COUNTRY_CODE } from '../../config/supported-countries';
 import { maskPhone } from '../payouts/mask-phone.util';
 import type { CreateClientOrgDto } from './dto/create-client-org.dto';
 import type { GrantClientAccessDto } from './dto/grant-client-access.dto';
@@ -35,7 +36,7 @@ export class AgencyClientsService {
         data: {
           name: dto.name,
           type: dto.type,
-          country: dto.country ?? OrganizationCountry.KENYA,
+          country: dto.country ?? DEFAULT_COUNTRY_CODE,
         },
       });
       await tx.agencyClientLink.create({

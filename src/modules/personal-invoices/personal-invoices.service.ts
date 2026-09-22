@@ -9,10 +9,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import type { Prisma } from '../../../generated/prisma/client';
-import {
-  OrganizationCountry,
-  PersonalInvoiceStatus,
-} from '../../../generated/prisma/enums';
+import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
+import { getSupportedCountry } from '../../config/supported-countries';
 import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import {
   MOBILE_MONEY_PROVIDERS,
@@ -49,6 +47,11 @@ export class PersonalInvoicesService {
       await this.assertOrgAccess(userId, dto.relatedOrganizationId);
     }
 
+    const issuer = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { country: true },
+    });
+
     const expiresAt = new Date(
       Date.now() +
         (dto.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 24 * 60 * 60 * 1000,
@@ -62,6 +65,7 @@ export class PersonalInvoicesService {
         recipientPhone: dto.recipientPhone,
         description: dto.description,
         amount: dto.amount,
+        currency: getSupportedCountry(issuer.country).currency,
         secureToken: randomBytes(32).toString('hex'),
         expiresAt,
         relatedOrganizationId: dto.relatedOrganizationId,
@@ -228,6 +232,9 @@ export class PersonalInvoicesService {
 
     const reference = randomUUID();
     const provider = this.providers.forCountry(invoice.issuer.country);
+    const { chargeShape, currency } = getSupportedCountry(
+      invoice.issuer.country,
+    );
     let result;
 
     // Charged additively on top of the invoice's amount — the issuer is
@@ -242,7 +249,7 @@ export class PersonalInvoicesService {
     const grossAmount = Number(invoice.amount) + platformFeeAmount;
     const metadata = { personalInvoiceId: invoice.id, platformFeeAmount };
 
-    if (invoice.issuer.country === OrganizationCountry.UGANDA) {
+    if (chargeShape === 'MOBILE_MONEY_PUSH') {
       if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
         throw new BadRequestException(
           'A phone number and network (MTN or Airtel) are required to pay this invoice',
@@ -252,7 +259,7 @@ export class PersonalInvoicesService {
         email: dto.payerEmail,
         amount: grossAmount,
         reference,
-        currency: 'UGX',
+        currency,
         metadata,
         mobileMoney: {
           phoneNumber: dto.phoneNumber,
@@ -268,6 +275,7 @@ export class PersonalInvoicesService {
         email: dto.payerEmail,
         amount: grossAmount,
         reference,
+        currency,
         subaccountCode: invoice.issuer.gatewayWalletId ?? undefined,
         platformFeeAmount,
         metadata,

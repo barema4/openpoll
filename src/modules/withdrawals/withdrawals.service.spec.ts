@@ -1,10 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { WithdrawalsService } from './withdrawals.service';
 import { Prisma } from '../../../generated/prisma/client';
-import {
-  OrganizationCountry,
-  PaymentRail,
-} from '../../../generated/prisma/enums';
+import { PaymentRail } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
@@ -20,7 +17,7 @@ function makePrisma(opts: {
   totalReceived?: number | null;
   totalWithdrawn?: number | null;
   totalDisbursed?: number | null;
-  country?: OrganizationCountry;
+  country?: string;
   payoutMobileProvider?: string | null;
   payoutMobileNumber?: string | null;
 }) {
@@ -55,7 +52,7 @@ function makePrisma(opts: {
     disbursement: { aggregate: disbursementAggregate },
     organization: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
-        country: opts.country ?? OrganizationCountry.UGANDA,
+        country: opts.country ?? 'UG',
         payoutMobileProvider: opts.payoutMobileProvider ?? 'MTN_MOMO_UGA',
         payoutMobileNumber: opts.payoutMobileNumber ?? '256771234567',
       }),
@@ -126,7 +123,7 @@ describe('WithdrawalsService.getBalance', () => {
 
 describe('WithdrawalsService.requestWithdrawal', () => {
   it('rejects a Kenya organization outright', async () => {
-    const prisma = makePrisma({ country: OrganizationCountry.KENYA });
+    const prisma = makePrisma({ country: 'KE' });
     const service = new WithdrawalsService(
       prisma,
       audit,

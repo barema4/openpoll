@@ -105,7 +105,7 @@ describe('UsersService.updateProfile', () => {
     const prisma = {
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
-          country: 'KENYA',
+          country: 'KE',
           gatewayWalletId: 'ACCT_123',
           payoutMobileProvider: null,
         }),
@@ -120,7 +120,7 @@ describe('UsersService.updateProfile', () => {
     );
 
     await expect(
-      service.updateProfile('user-1', { country: 'UGANDA' }),
+      service.updateProfile('user-1', { country: 'UG' }),
     ).rejects.toThrow(/cannot change country/i);
   });
 
@@ -129,7 +129,7 @@ describe('UsersService.updateProfile', () => {
     const prisma = {
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
-          country: 'KENYA',
+          country: 'KE',
           gatewayWalletId: null,
           payoutMobileProvider: null,
         }),
@@ -144,11 +144,11 @@ describe('UsersService.updateProfile', () => {
       config,
     );
 
-    await service.updateProfile('user-1', { country: 'UGANDA' });
+    await service.updateProfile('user-1', { country: 'UG' });
 
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ country: 'UGANDA' }),
+        data: expect.objectContaining({ country: 'UG' }),
       }),
     );
   });
@@ -160,7 +160,7 @@ describe('UsersService.setMobileMoneyPayout', () => {
   it('rejects when the user is not on the Uganda country setting', async () => {
     const prisma = {
       user: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KENYA' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
       },
     } as unknown as PrismaService;
     const service = new UsersService(
@@ -185,7 +185,7 @@ describe('UsersService.setMobileMoneyPayout', () => {
     });
     const prisma = {
       user: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UGANDA' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'UG' }),
         update,
       },
     } as unknown as PrismaService;

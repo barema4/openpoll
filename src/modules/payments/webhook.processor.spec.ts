@@ -49,9 +49,10 @@ describe('WebhookProcessor', () => {
         .mockResolvedValue({ amountPaid: '500', status: 'PAID' }),
     };
     const event = {
-      findUniqueOrThrow: jest
-        .fn()
-        .mockResolvedValue({ organization: { country: 'KENYA' } }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        organization: { country: 'KE' },
+        currency: 'KES',
+      }),
     };
     const prisma = {
       transaction,
