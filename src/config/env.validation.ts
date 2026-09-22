@@ -63,6 +63,16 @@ export const envSchema = z.object({
   // Optional so .env.test/CI never need it; unset means the route denies
   // everyone (fail closed, not open).
   PLATFORM_OPERATOR_EMAIL: z.string().email().optional(),
+
+  // Agency plan billing (BillingModule) — a completely separate concern
+  // from PAYSTACK_*/PAWAPAY_* above, which charge donors on an org's
+  // behalf. This charges an org itself for OpenPool's own subscription
+  // revenue, via Stripe's REST API (no SDK — plain fetch, same style as
+  // paystack.provider.ts). Optional so dev/test/CI never need real Stripe
+  // credentials; agency-plan checkout/portal routes fail closed if unset.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_AGENCY_PRICE_ID: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

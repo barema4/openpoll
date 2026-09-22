@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AgencyClientsService } from './agency-clients.service';
 import {
   OrgRole,
@@ -23,6 +27,7 @@ describe('AgencyClientsService.createClient', () => {
       agencyClientAccess: { create: agencyClientAccessCreate },
     };
     const prisma = {
+      agencyClientLink: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
     } as unknown as PrismaService;
     const service = new AgencyClientsService(prisma, audit);
@@ -58,6 +63,79 @@ describe('AgencyClientsService.createClient', () => {
     expect(result).toEqual(
       expect.objectContaining({ id: 'client-org-1', name: 'Client Co' }),
     );
+  });
+
+  it('allows a 2nd+ client when the agency has an active plan', async () => {
+    const organizationCreate = jest
+      .fn()
+      .mockResolvedValue({ id: 'client-org-2', name: 'Client Co 2' });
+    const tx = {
+      organization: { create: organizationCreate },
+      agencyClientLink: { create: jest.fn().mockResolvedValue({}) },
+      agencyClientAccess: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
+      organization: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          agencyPlanExpiresAt: new Date(Date.now() + 1000 * 60 * 60),
+        }),
+      },
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
+    } as unknown as PrismaService;
+    const service = new AgencyClientsService(prisma, audit);
+
+    const result = await service.createClient('agency-org-1', 'user-1', {
+      name: 'Client Co 2',
+      type: OrganizationType.OTHER,
+      country: OrganizationCountry.KENYA,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'client-org-2', name: 'Client Co 2' }),
+    );
+  });
+
+  it('rejects a 2nd+ client when the agency has no active plan', async () => {
+    const prisma = {
+      agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
+      organization: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ agencyPlanExpiresAt: null }),
+      },
+      $transaction: jest.fn(),
+    } as unknown as PrismaService;
+    const service = new AgencyClientsService(prisma, audit);
+
+    await expect(
+      service.createClient('agency-org-1', 'user-1', {
+        name: 'Client Co 2',
+        type: OrganizationType.OTHER,
+        country: OrganizationCountry.KENYA,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects a 2nd+ client when the agency plan has expired', async () => {
+    const prisma = {
+      agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
+      organization: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          agencyPlanExpiresAt: new Date(Date.now() - 1000 * 60 * 60),
+        }),
+      },
+      $transaction: jest.fn(),
+    } as unknown as PrismaService;
+    const service = new AgencyClientsService(prisma, audit);
+
+    await expect(
+      service.createClient('agency-org-1', 'user-1', {
+        name: 'Client Co 2',
+        type: OrganizationType.OTHER,
+        country: OrganizationCountry.KENYA,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

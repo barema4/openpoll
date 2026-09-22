@@ -133,6 +133,14 @@ model Organization {
   logoUrl              String?             @map("logo_url")
   createdAt            DateTime            @default(now()) @map("created_at")
 
+  // Agency plan billing (Stripe subscriptions) — gates linking more than one
+  // client org via AgencyClientLink; the first client is always free. Stripe
+  // is the source of truth (see BillingModule); agencyPlanExpiresAt is a
+  // read-optimized cache of the subscription's current_period_end, updated
+  // by StripeWebhookProcessor. Null/past = no active plan.
+  stripeCustomerId    String?   @unique @map("stripe_customer_id")
+  agencyPlanExpiresAt DateTime? @map("agency_plan_expires_at")
+
   memberships             OrganizationMembership[]
   events                  Event[]
   invitations             OrganizationInvitation[]

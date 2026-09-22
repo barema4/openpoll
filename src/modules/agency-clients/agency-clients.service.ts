@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -27,6 +28,8 @@ export class AgencyClientsService {
     userId: string,
     dto: CreateClientOrgDto,
   ) {
+    await this.assertCanLinkAnotherClient(agencyOrganizationId);
+
     const clientOrganization = await this.prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
         data: {
@@ -64,6 +67,30 @@ export class AgencyClientsService {
     });
 
     return maskPhone(clientOrganization);
+  }
+
+  // The first linked client is free — only the 2nd+ requires an active
+  // Agency plan (see BillingModule/Organization.agencyPlanExpiresAt).
+  // Already-linked clients keep working in full even if the plan lapses;
+  // this only blocks *adding another one*.
+  private async assertCanLinkAnotherClient(agencyOrganizationId: string) {
+    const existingClientCount = await this.prisma.agencyClientLink.count({
+      where: { agencyOrganizationId },
+    });
+    if (existingClientCount === 0) return;
+
+    const agency = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: agencyOrganizationId },
+      select: { agencyPlanExpiresAt: true },
+    });
+    const hasActivePlan =
+      agency.agencyPlanExpiresAt !== null &&
+      agency.agencyPlanExpiresAt > new Date();
+    if (!hasActivePlan) {
+      throw new ForbiddenException(
+        'Upgrade to the Agency plan to manage more than one client',
+      );
+    }
   }
 
   async listClients(agencyOrganizationId: string) {

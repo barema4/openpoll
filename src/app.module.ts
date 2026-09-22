@@ -12,6 +12,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { AgencyClientsModule } from './modules/agency-clients/agency-clients.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { EventsModule } from './modules/events/events.module';
 import { EventReportsModule } from './modules/event-reports/event-reports.module';
 import { BudgetCategoriesModule } from './modules/budget-categories/budget-categories.module';
@@ -62,6 +63,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
     AuthModule,
     OrganizationsModule,
     AgencyClientsModule,
+    BillingModule,
     EventsModule,
     EventReportsModule,
     BudgetCategoriesModule,
