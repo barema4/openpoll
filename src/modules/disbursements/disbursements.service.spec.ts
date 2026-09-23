@@ -9,6 +9,7 @@ import {
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
+import type { PaystackProvider } from '../payments/providers/paystack.provider';
 
 describe('DisbursementsService.pay', () => {
   function makeCategory(overrides: Record<string, unknown> = {}) {
@@ -43,6 +44,11 @@ describe('DisbursementsService.pay', () => {
     payoutAccepted?: boolean;
     failureMessage?: string;
     transactionError?: Error;
+    payBankAccountVendorResult?: {
+      accepted: boolean;
+      providerReference?: string;
+      failureMessage?: string;
+    };
   }) {
     const findUniqueOrThrow = jest.fn().mockResolvedValue(opts.category);
     const disbursementAggregate = jest
@@ -74,12 +80,20 @@ describe('DisbursementsService.pay', () => {
       failureMessage: opts.failureMessage,
     });
     const pawapay = { initiatePayout } as unknown as PawaPayProvider;
-    const service = new DisbursementsService(prisma, audit, pawapay);
+    const payBankAccountVendor = jest.fn().mockResolvedValue(
+      opts.payBankAccountVendorResult ?? {
+        accepted: true,
+        providerReference: 'trf_1',
+      },
+    );
+    const paystack = { payBankAccountVendor } as unknown as PaystackProvider;
+    const service = new DisbursementsService(prisma, audit, pawapay, paystack);
     return {
       service,
       create,
       update,
       initiatePayout,
+      payBankAccountVendor,
       recordAudit,
       disbursementAggregate,
       transactionAggregate,
@@ -178,13 +192,16 @@ describe('DisbursementsService.pay', () => {
     );
   });
 
-  it('rejects a Kenya bank-account vendor — not available until the Paystack Transfer integration lands', async () => {
-    const { service } = makeService({
+  it('pays a Kenya bank-account vendor via Paystack Transfer', async () => {
+    const { service, create, update, payBankAccountVendor } = makeService({
       category: makeCategory({
         vendor: {
           id: 'vendor-2',
           name: 'Nairobi Sound Co',
           payoutMethod: VendorPayoutMethod.BANK_ACCOUNT,
+          payoutBankCode: '011',
+          payoutAccountNumber: '0123456789',
+          payoutAccountName: 'NAIROBI SOUND CO',
           payoutMobileProvider: null,
           payoutMobileNumber: null,
         },
@@ -196,8 +213,115 @@ describe('DisbursementsService.pay', () => {
       alreadyPaid: 0,
     });
 
+    await service.pay('user-1', 'cat-1');
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recipientName: 'Nairobi Sound Co',
+          recipientBankCode: '011',
+          recipientAccountNumber: '0123456789',
+          amount: 500,
+        }) as unknown,
+      }),
+    );
+    expect(payBankAccountVendor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 500,
+        currency: 'KES',
+        accountName: 'NAIROBI SOUND CO',
+        accountNumber: '0123456789',
+        bankCode: '011',
+      }),
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: DisbursementStatus.QUEUED,
+          gatewayTransferRef: expect.any(String) as unknown,
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('marks the disbursement FAILED when Paystack rejects the transfer', async () => {
+    const { service, update } = makeService({
+      category: makeCategory({
+        vendor: {
+          id: 'vendor-2',
+          name: 'Nairobi Sound Co',
+          payoutMethod: VendorPayoutMethod.BANK_ACCOUNT,
+          payoutBankCode: '011',
+          payoutAccountNumber: '0123456789',
+          payoutAccountName: 'NAIROBI SOUND CO',
+        },
+        event: {
+          organization: { country: 'KE' },
+          budgetApproval: { status: BudgetApprovalStatus.FUNDED },
+        },
+      }),
+      alreadyPaid: 0,
+      payBankAccountVendorResult: {
+        accepted: false,
+        failureMessage: 'Invalid bank account',
+      },
+    });
+
+    await service.pay('user-1', 'cat-1');
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: DisbursementStatus.FAILED,
+          failureReason: 'Invalid bank account',
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('rejects a Kenya bank-account vendor with incomplete bank details', async () => {
+    const { service } = makeService({
+      category: makeCategory({
+        vendor: {
+          id: 'vendor-2',
+          name: 'Nairobi Sound Co',
+          payoutMethod: VendorPayoutMethod.BANK_ACCOUNT,
+          payoutBankCode: null,
+          payoutAccountNumber: null,
+        },
+        event: {
+          organization: { country: 'KE' },
+          budgetApproval: { status: BudgetApprovalStatus.FUNDED },
+        },
+      }),
+      alreadyPaid: 0,
+    });
+
     await expect(service.pay('user-1', 'cat-1')).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+  });
+
+  it('rejects vendor payouts for a Stripe-rail organization with a clear message naming the real limitation', async () => {
+    const { service } = makeService({
+      category: makeCategory({
+        vendor: {
+          id: 'vendor-3',
+          name: 'US Caterer',
+          payoutMethod: VendorPayoutMethod.BANK_ACCOUNT,
+          payoutBankCode: '011',
+          payoutAccountNumber: '0123456789',
+        },
+        event: {
+          organization: { country: 'US' },
+          budgetApproval: { status: BudgetApprovalStatus.FUNDED },
+        },
+      }),
+      alreadyPaid: 0,
+    });
+
+    await expect(service.pay('user-1', 'cat-1')).rejects.toThrow(
+      /Stripe Connect account/,
     );
   });
 
@@ -280,7 +404,8 @@ describe('DisbursementsService.listForEvent', () => {
     } as unknown as PrismaService;
     const audit = {} as unknown as AuditService;
     const pawapay = {} as unknown as PawaPayProvider;
-    const service = new DisbursementsService(prisma, audit, pawapay);
+    const paystack = {} as unknown as PaystackProvider;
+    const service = new DisbursementsService(prisma, audit, pawapay, paystack);
 
     const result = await service.listForEvent({ eventId: 'event-1' });
 

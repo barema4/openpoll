@@ -8,14 +8,17 @@ import {
 } from '../../../../generated/prisma/enums';
 import type {
   Bank,
+  BankAccountVendorPayoutProvider,
   BankPayoutProvider,
   CreateSubaccountParams,
   InitializeChargeParams,
   InitializeChargeResult,
   ParsedWebhookEvent,
+  PayBankAccountVendorParams,
   PaymentProvider,
   ResolvedAccount,
   SubaccountResult,
+  VendorTransferResult,
   VerifiedTransaction,
 } from './payment-provider.interface';
 
@@ -93,6 +96,18 @@ interface PaystackRefundResponse {
   data?: { id: number; status: string };
 }
 
+interface PaystackTransferRecipientResponse {
+  status: boolean;
+  message?: string;
+  data?: { recipient_code: string };
+}
+
+interface PaystackTransferResponse {
+  status: boolean;
+  message?: string;
+  data?: { reference: string; status: string };
+}
+
 // TODO(verify against real Paystack sandbox): the `refund.processed` /
 // `refund.failed` webhook body shape below (data.id as the refund id,
 // data.transaction_reference / data.transaction.reference for the original
@@ -144,7 +159,12 @@ export interface ParsedDisputeWebhookEvent {
 }
 
 @Injectable()
-export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
+export class PaystackProvider
+  implements
+    PaymentProvider,
+    BankPayoutProvider,
+    BankAccountVendorPayoutProvider
+{
   constructor(private readonly config: ConfigService) {}
 
   async initializeCharge(
@@ -274,6 +294,80 @@ export class PaystackProvider implements PaymentProvider, BankPayoutProvider {
     }
 
     return { refundReference: String(body.data.id), accepted: true };
+  }
+
+  // Kenya bank-account vendor payouts (DisbursementsService) — a
+  // recipient-then-transfer flow, matching Paystack's real Transfer API
+  // shape. Vendor has no persisted recipient_code (see the Vendor model),
+  // so a fresh recipient is created on every payout — infrequent enough
+  // that this is simpler than caching one, at the cost of a redundant
+  // Paystack-side recipient record per payout.
+  //
+  // TODO(verify against a real Paystack Kenya account, live not sandbox):
+  // 'nuban' is Paystack's Nigerian bank-account recipient type — confirm
+  // the correct recipient type/shape for KES transfers before relying on
+  // this in production. Also unverified: some Paystack accounts require an
+  // OTP step (POST /transfer/finalize_transfer) before a transfer actually
+  // completes, which isn't handled here — a transfer Paystack returns as
+  // 'otp'-pending will need manual finalization until that's built.
+  async payBankAccountVendor(
+    params: PayBankAccountVendorParams,
+  ): Promise<VendorTransferResult> {
+    const recipientResponse = await fetch(
+      `${PAYSTACK_BASE_URL}/transferrecipient`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'nuban',
+          name: params.accountName,
+          account_number: params.accountNumber,
+          bank_code: params.bankCode,
+          currency: params.currency,
+        }),
+      },
+    );
+    const recipientBody =
+      (await recipientResponse.json()) as PaystackTransferRecipientResponse;
+    if (!recipientResponse.ok || !recipientBody.status || !recipientBody.data) {
+      return {
+        accepted: false,
+        failureMessage:
+          recipientBody.message ??
+          'Could not create a Paystack transfer recipient for this vendor',
+      };
+    }
+
+    const transferResponse = await fetch(`${PAYSTACK_BASE_URL}/transfer`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.get<string>('PAYSTACK_SECRET_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source: 'balance',
+        amount: Math.round(params.amount * 100),
+        recipient: recipientBody.data.recipient_code,
+        reference: params.transferId,
+        reason: 'Vendor payout',
+      }),
+    });
+    const transferBody =
+      (await transferResponse.json()) as PaystackTransferResponse;
+    if (!transferResponse.ok || !transferBody.status || !transferBody.data) {
+      return {
+        accepted: false,
+        failureMessage: transferBody.message ?? 'Paystack transfer failed',
+      };
+    }
+
+    return {
+      accepted: true,
+      providerReference: transferBody.data.reference ?? params.transferId,
+    };
   }
 
   // Both charge and refund events land on the same webhook URL — checked

@@ -2,6 +2,7 @@ import { ReconciliationService } from './reconciliation.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { PaystackProvider } from '../payments/providers/paystack.provider';
 import type { PawaPayProvider } from '../payments/providers/pawapay.provider';
+import type { StripeProvider } from '../payments/providers/stripe.provider';
 
 function makePrisma(opts: {
   kenyaFees?: number | null;
@@ -9,14 +10,16 @@ function makePrisma(opts: {
   ugandaWithdrawn?: number | null;
   ugandaDisbursed?: number | null;
   ugandaFees?: number | null;
+  stripeFees?: number | null;
 }) {
   const aggregateCalls: unknown[] = [];
   return {
     transaction: {
       aggregate: jest.fn((args: unknown) => {
         aggregateCalls.push(args);
-        // Order matches ReconciliationService: Kenya fees, then (Uganda)
-        // received, then Uganda fees.
+        // Order matches ReconciliationService.check()'s Promise.all:
+        // Kenya fees, then (Uganda) received, then Uganda fees, then
+        // Stripe fees.
         if (aggregateCalls.length === 1) {
           return Promise.resolve({
             _sum: { platformFeeAmount: opts.kenyaFees ?? null },
@@ -27,8 +30,13 @@ function makePrisma(opts: {
             _sum: { amountSettled: opts.ugandaReceived ?? null },
           });
         }
+        if (aggregateCalls.length === 3) {
+          return Promise.resolve({
+            _sum: { platformFeeAmount: opts.ugandaFees ?? null },
+          });
+        }
         return Promise.resolve({
-          _sum: { platformFeeAmount: opts.ugandaFees ?? null },
+          _sum: { platformFeeAmount: opts.stripeFees ?? null },
         });
       }),
     },
@@ -45,20 +53,35 @@ function makePrisma(opts: {
   } as unknown as PrismaService;
 }
 
+function makeProviders(opts: {
+  kenyaBalances?: { currency: string; balance: number }[];
+  ugandaBalances?: { country: string; currency: string; balance: number }[];
+  stripeBalances?: { currency: string; balance: number }[];
+}) {
+  const paystack = {
+    getBalance: jest.fn().mockResolvedValue(opts.kenyaBalances ?? []),
+  } as unknown as PaystackProvider;
+  const pawapay = {
+    getBalance: jest.fn().mockResolvedValue(opts.ugandaBalances ?? []),
+  } as unknown as PawaPayProvider;
+  const stripe = {
+    getBalance: jest.fn().mockResolvedValue(opts.stripeBalances ?? []),
+  } as unknown as StripeProvider;
+  return { paystack, pawapay, stripe };
+}
+
 describe('ReconciliationService', () => {
   it('reports the Kenya live balance alongside expected platform fees and a caveat', async () => {
     const prisma = makePrisma({ kenyaFees: 500 });
-    const paystack = {
-      getBalance: jest
-        .fn()
-        .mockResolvedValue([{ currency: 'KES', balance: 1200 }]),
-    } as unknown as PaystackProvider;
-    const pawapay = {
-      getBalance: jest
-        .fn()
-        .mockResolvedValue([{ country: 'UGA', currency: 'UGX', balance: 0 }]),
-    } as unknown as PawaPayProvider;
-    const service = new ReconciliationService(prisma, paystack, pawapay);
+    const { paystack, pawapay, stripe } = makeProviders({
+      kenyaBalances: [{ currency: 'KES', balance: 1200 }],
+    });
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
 
     const report = await service.check();
 
@@ -75,17 +98,15 @@ describe('ReconciliationService', () => {
       ugandaWithdrawn: 3000,
       ugandaFees: 150,
     });
-    const paystack = {
-      getBalance: jest.fn().mockResolvedValue([]),
-    } as unknown as PaystackProvider;
-    const pawapay = {
-      getBalance: jest
-        .fn()
-        .mockResolvedValue([
-          { country: 'UGA', currency: 'UGX', balance: 7150 },
-        ]),
-    } as unknown as PawaPayProvider;
-    const service = new ReconciliationService(prisma, paystack, pawapay);
+    const { paystack, pawapay, stripe } = makeProviders({
+      ugandaBalances: [{ country: 'UGA', currency: 'UGX', balance: 7150 }],
+    });
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
 
     const report = await service.check();
 
@@ -103,17 +124,15 @@ describe('ReconciliationService', () => {
       ugandaDisbursed: 4000,
       ugandaFees: 0,
     });
-    const paystack = {
-      getBalance: jest.fn().mockResolvedValue([]),
-    } as unknown as PaystackProvider;
-    const pawapay = {
-      getBalance: jest
-        .fn()
-        .mockResolvedValue([
-          { country: 'UGA', currency: 'UGX', balance: 5000 },
-        ]),
-    } as unknown as PawaPayProvider;
-    const service = new ReconciliationService(prisma, paystack, pawapay);
+    const { paystack, pawapay, stripe } = makeProviders({
+      ugandaBalances: [{ country: 'UGA', currency: 'UGX', balance: 5000 }],
+    });
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
 
     const report = await service.check();
 
@@ -128,17 +147,15 @@ describe('ReconciliationService', () => {
       ugandaWithdrawn: 0,
       ugandaFees: 0,
     });
-    const paystack = {
-      getBalance: jest.fn().mockResolvedValue([]),
-    } as unknown as PaystackProvider;
-    const pawapay = {
-      getBalance: jest
-        .fn()
-        .mockResolvedValue([
-          { country: 'UGA', currency: 'UGX', balance: 9000 },
-        ]),
-    } as unknown as PawaPayProvider;
-    const service = new ReconciliationService(prisma, paystack, pawapay);
+    const { paystack, pawapay, stripe } = makeProviders({
+      ugandaBalances: [{ country: 'UGA', currency: 'UGX', balance: 9000 }],
+    });
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
 
     const report = await service.check();
 
@@ -146,20 +163,42 @@ describe('ReconciliationService', () => {
     expect(report.uganda.drift).toBe(-1000);
   });
 
+  it('reports the Stripe live balance alongside expected platform fees across every Stripe-backed country', async () => {
+    const prisma = makePrisma({ stripeFees: 42 });
+    const { paystack, pawapay, stripe } = makeProviders({
+      stripeBalances: [{ currency: 'USD', balance: 300 }],
+    });
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
+
+    const report = await service.check();
+
+    expect(report.stripe.liveBalances).toEqual([
+      { currency: 'USD', balance: 300 },
+    ]);
+    expect(report.stripe.expectedPlatformFees).toBe(42);
+    expect(report.stripe.caveat).toMatch(/approximate/i);
+  });
+
   it('treats no transactions/withdrawals/fees as zero, not null', async () => {
     const prisma = makePrisma({});
-    const paystack = {
-      getBalance: jest.fn().mockResolvedValue([]),
-    } as unknown as PaystackProvider;
-    const pawapay = {
-      getBalance: jest.fn().mockResolvedValue([]),
-    } as unknown as PawaPayProvider;
-    const service = new ReconciliationService(prisma, paystack, pawapay);
+    const { paystack, pawapay, stripe } = makeProviders({});
+    const service = new ReconciliationService(
+      prisma,
+      paystack,
+      pawapay,
+      stripe,
+    );
 
     const report = await service.check();
 
     expect(report.kenya.expectedPlatformFees).toBe(0);
     expect(report.uganda.expectedTotal).toBe(0);
     expect(report.uganda.drift).toBe(0);
+    expect(report.stripe.expectedPlatformFees).toBe(0);
   });
 });

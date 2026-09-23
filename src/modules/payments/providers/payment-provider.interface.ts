@@ -152,3 +152,29 @@ export interface BankPayoutProvider {
    */
   createSubaccount(params: CreateSubaccountParams): Promise<SubaccountResult>;
 }
+
+export interface PayBankAccountVendorParams {
+  /** Our own idempotency reference for this payout attempt. */
+  transferId: string;
+  amount: number;
+  currency: string;
+  accountName: string;
+  accountNumber: string;
+  bankCode: string;
+}
+
+export interface VendorTransferResult {
+  accepted: boolean;
+  providerReference?: string;
+  failureMessage?: string;
+}
+
+// Kenya/Paystack-only: bank-account vendor payouts (DisbursementsService).
+// PawaPay vendor payouts go straight to a phone number via
+// PawaPayProvider.initiatePayout instead — no recipient-creation step, so
+// no equivalent interface is needed there.
+export interface BankAccountVendorPayoutProvider {
+  payBankAccountVendor(
+    params: PayBankAccountVendorParams,
+  ): Promise<VendorTransferResult>;
+}

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PawaPayProvider } from '../payments/providers/pawapay.provider';
+import { PaystackProvider } from '../payments/providers/paystack.provider';
 import type { MobileMoneyProvider } from '../payments/providers/payment-provider.interface';
 import { Prisma } from '../../../generated/prisma/client';
 import {
@@ -49,32 +50,46 @@ export class DisbursementsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pawapay: PawaPayProvider,
+    private readonly paystack: PaystackProvider,
   ) {}
 
   // Pays the full remaining allocated balance for a budget category to its
   // assigned vendor — no partial-amount support in v1 (matches this
-  // codebase's existing full-only precedent for refunds). Uganda/mobile-
-  // money only in this phase; Kenya bank transfers need the (not yet built)
-  // Paystack Transfer integration.
+  // codebase's existing full-only precedent for refunds). Mechanism is
+  // whichever the vendor itself is set up for (PawaPay mobile money or
+  // Paystack bank transfer) — see reserveDisbursement's validation.
   async pay(userId: string, budgetCategoryId: string) {
-    const { disbursement, vendor } = await this.reserveDisbursement(
+    const { disbursement, vendor, currency } = await this.reserveDisbursement(
       userId,
       budgetCategoryId,
     );
 
-    const payoutId = randomUUID();
-    const result = await this.pawapay.initiatePayout({
-      payoutId,
-      amount: Number(disbursement.amount),
-      currency: 'UGX',
-      phoneNumber: vendor.payoutMobileNumber!,
-      provider: vendor.payoutMobileProvider as MobileMoneyProvider,
-    });
+    const transferId = randomUUID();
+    const result =
+      vendor.payoutMethod === VendorPayoutMethod.MOBILE_MONEY
+        ? await this.pawapay.initiatePayout({
+            payoutId: transferId,
+            amount: Number(disbursement.amount),
+            currency,
+            phoneNumber: vendor.payoutMobileNumber!,
+            provider: vendor.payoutMobileProvider as MobileMoneyProvider,
+          })
+        : await this.paystack.payBankAccountVendor({
+            transferId,
+            amount: Number(disbursement.amount),
+            currency,
+            accountName: vendor.payoutAccountName!,
+            accountNumber: vendor.payoutAccountNumber!,
+            bankCode: vendor.payoutBankCode!,
+          });
 
     const updated = await this.prisma.disbursement.update({
       where: { id: disbursement.id },
       data: result.accepted
-        ? { status: DisbursementStatus.QUEUED, gatewayTransferRef: payoutId }
+        ? {
+            status: DisbursementStatus.QUEUED,
+            gatewayTransferRef: transferId,
+          }
         : {
             status: DisbursementStatus.FAILED,
             failureReason: result.failureMessage ?? 'Payout rejected',
@@ -193,16 +208,25 @@ export class DisbursementsService {
           }
 
           const organization = category.event.organization;
+          const { provider, currency } = getSupportedCountry(
+            organization?.country ?? DEFAULT_COUNTRY_CODE,
+          );
           const isPawaPayMobileMoney =
-            getSupportedCountry(organization?.country ?? DEFAULT_COUNTRY_CODE)
-              .provider === 'PAWAPAY' &&
+            provider === 'PAWAPAY' &&
             category.vendor.payoutMethod === VendorPayoutMethod.MOBILE_MONEY &&
             !!category.vendor.payoutMobileProvider &&
             !!category.vendor.payoutMobileNumber;
+          const isPaystackBankAccount =
+            provider === 'PAYSTACK' &&
+            category.vendor.payoutMethod === VendorPayoutMethod.BANK_ACCOUNT &&
+            !!category.vendor.payoutBankCode &&
+            !!category.vendor.payoutAccountNumber;
 
-          if (!isPawaPayMobileMoney) {
+          if (!isPawaPayMobileMoney && !isPaystackBankAccount) {
             throw new BadRequestException(
-              "Vendor payouts are not available yet for this organization's country",
+              provider === 'STRIPE'
+                ? 'Vendor payouts are not available yet for organizations on the Stripe rail — the vendor would need their own Stripe Connect account'
+                : "Vendor payouts are not available yet for this organization's country/payout method combination",
             );
           }
 
@@ -213,6 +237,8 @@ export class DisbursementsService {
               vendorId: category.vendor.id,
               transferType: DisbursementTransferType.VENDOR_PAYOUT,
               recipientName: category.vendor.name,
+              recipientBankCode: category.vendor.payoutBankCode,
+              recipientAccountNumber: category.vendor.payoutAccountNumber,
               recipientMobileProvider: category.vendor.payoutMobileProvider,
               recipientMobileNumber: category.vendor.payoutMobileNumber,
               amount: remaining,
@@ -220,7 +246,7 @@ export class DisbursementsService {
             },
           });
 
-          return { disbursement, vendor: category.vendor };
+          return { disbursement, vendor: category.vendor, currency };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );

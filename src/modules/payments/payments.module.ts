@@ -64,12 +64,17 @@ import { TransactionsModule } from '../transactions/transactions.module';
   // consumer (PayoutsModule) that has no equivalent PawaPay path.
   // PawaPayProvider is exported concretely for WithdrawalsModule (payouts
   // have no Paystack equivalent, so there's no shared-interface abstraction
-  // to inject instead). PaymentProviderRegistry is exported for any
-  // country-aware charging consumer outside this module (PersonalInvoicesModule).
+  // to inject instead). PaystackProvider is also exported concretely for
+  // DisbursementsModule's Kenya bank-account vendor transfers
+  // (BankAccountVendorPayoutProvider). StripeProvider is exported
+  // concretely for ReconciliationModule's Stripe balance check.
+  // PaymentProviderRegistry is exported for any country-aware charging
+  // consumer outside this module (PersonalInvoicesModule).
   exports: [
     PAYSTACK_PROVIDER,
     PaystackProvider,
     PawaPayProvider,
+    StripeProvider,
     PaymentProviderRegistry,
   ],
 })

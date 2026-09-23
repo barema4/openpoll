@@ -40,6 +40,17 @@ interface StripePaymentIntent {
   currency: string;
 }
 
+interface StripeBalanceResponse {
+  available: { amount: number; currency: string }[];
+  pending: { amount: number; currency: string }[];
+}
+
+export interface ProviderBalance {
+  currency: string;
+  /** Major currency units. */
+  balance: number;
+}
+
 // checkout.session.completed's data.object shape — a superset of the
 // creation response, plus the fields WebhookProcessor needs (metadata,
 // client_reference_id).
@@ -170,6 +181,26 @@ export class StripeProvider implements PaymentProvider {
       amountSettled: intent.amount / 100,
       currency: intent.currency.toUpperCase(),
     };
+  }
+
+  // The platform's own main-account balance — used for reconciliation, not
+  // any charge/payout flow. Mirrors PaystackProvider.getBalance(); Stripe
+  // splits available vs pending per currency, summed here into one figure
+  // per currency to match Paystack's single-total shape.
+  async getBalance(): Promise<ProviderBalance[]> {
+    const balance = await this.request<StripeBalanceResponse>(
+      'GET',
+      '/balance',
+    );
+    const totals = new Map<string, number>();
+    for (const bucket of [...balance.available, ...balance.pending]) {
+      const currency = bucket.currency.toUpperCase();
+      totals.set(currency, (totals.get(currency) ?? 0) + bucket.amount / 100);
+    }
+    return Array.from(totals, ([currency, balanceAmount]) => ({
+      currency,
+      balance: balanceAmount,
+    }));
   }
 
   parseWebhookEvent(rawBody: Buffer): ParsedWebhookEvent {
