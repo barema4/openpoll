@@ -105,6 +105,18 @@ export class OrganizationsController {
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER)
+  @Post(':organizationId/stripe-connect/onboarding-link')
+  createStripeConnectOnboardingLink(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('organizationId') organizationId: string,
+  ) {
+    return this.organizationsService.createStripeConnectOnboardingLink(
+      user.id,
+      organizationId,
+    );
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER)
   @Patch(':organizationId/branding')
   setBranding(
     @CurrentUser() user: AuthenticatedUser,

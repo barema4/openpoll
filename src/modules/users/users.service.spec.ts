@@ -2,6 +2,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { PayoutsService } from '../payouts/payouts.service';
+import type { StripeConnectService } from '../stripe-connect/stripe-connect.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { ConfigService } from '@nestjs/config';
 
@@ -24,7 +25,13 @@ describe('UsersService.setPayout', () => {
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(prisma, payouts, audit, config);
+    const service = new UsersService(
+      prisma,
+      payouts,
+      {} as StripeConnectService,
+      audit,
+      config,
+    );
 
     await service.setPayout('user-1', {
       bankCode: '011',
@@ -63,6 +70,7 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -84,6 +92,7 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -115,6 +124,7 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -140,6 +150,7 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -166,6 +177,7 @@ describe('UsersService.setMobileMoneyPayout', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -192,6 +204,7 @@ describe('UsersService.setMobileMoneyPayout', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -217,6 +230,54 @@ describe('UsersService.setMobileMoneyPayout', () => {
   });
 });
 
+describe('UsersService.createStripeConnectOnboardingLink', () => {
+  it('creates a Stripe account and persists it when the user has none yet', async () => {
+    const update = jest.fn();
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          email: 'jane@example.com',
+          stripeConnectAccountId: null,
+        }),
+        update,
+      },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const ensureAccount = jest.fn().mockResolvedValue('acct_new');
+    const createOnboardingLink = jest
+      .fn()
+      .mockResolvedValue('https://connect.stripe.com/setup/abc');
+    const stripeConnect = {
+      ensureAccount,
+      createOnboardingLink,
+    } as unknown as StripeConnectService;
+    const urlConfig = {
+      get: jest.fn(() => 'http://localhost:5173'),
+    } as unknown as ConfigService;
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      stripeConnect,
+      audit,
+      urlConfig,
+    );
+
+    const result = await service.createStripeConnectOnboardingLink('user-1');
+
+    expect(ensureAccount).toHaveBeenCalledWith({
+      existingAccountId: null,
+      ownerType: 'USER',
+      ownerId: 'user-1',
+      email: 'jane@example.com',
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { stripeConnectAccountId: 'acct_new' },
+    });
+    expect(result).toEqual({ url: 'https://connect.stripe.com/setup/abc' });
+  });
+});
+
 describe('UsersService.changePassword', () => {
   it('rejects an incorrect current password', async () => {
     const prisma = {
@@ -231,6 +292,7 @@ describe('UsersService.changePassword', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );
@@ -259,6 +321,7 @@ describe('UsersService.changePassword', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
+      {} as StripeConnectService,
       audit,
       config,
     );

@@ -39,6 +39,14 @@ model User {
   country              String              @default("KE")
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
+  // Stripe Express connected account for this user's own payout destination
+  // (STRIPE-provider countries — see SUPPORTED_COUNTRIES) — the third payout
+  // mechanism alongside the Paystack/PawaPay fields above. Set via
+  // POST /users/me/stripe-connect/onboarding-link; payoutsEnabled flips only
+  // once Stripe's account.updated webhook confirms onboarding actually
+  // completed (details_submitted && payouts_enabled), not at link-creation time.
+  stripeConnectAccountId      String?  @map("stripe_connect_account_id")
+  stripeConnectPayoutsEnabled Boolean  @default(false) @map("stripe_connect_payouts_enabled")
   // Platform-operator access (reconciliation, staff management) — distinct
   // from OrgRole, which is scoped per-organization. Null means a regular
   // user with no admin access at all. See resolve-effective-platform-role.ts
@@ -128,6 +136,14 @@ model Organization {
   // to the last 4 digits in API responses.
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
+  // Stripe Express connected account — this org's payout destination for
+  // STRIPE-provider countries (see SUPPORTED_COUNTRIES), the third payout
+  // mechanism alongside the two above. Set via
+  // POST /organizations/:id/stripe-connect/onboarding-link; payoutsEnabled
+  // flips only once Stripe's account.updated webhook confirms onboarding
+  // actually completed, not at link-creation time.
+  stripeConnectAccountId      String?  @map("stripe_connect_account_id")
+  stripeConnectPayoutsEnabled Boolean  @default(false) @map("stripe_connect_payouts_enabled")
   // Shown instead of the platform's own badge on public checkout pages
   // (pay/pledge) — set only via PATCH /organizations/:id/branding. A plain
   // URL, same convention as Event.coverImageUrl — no upload pipeline exists

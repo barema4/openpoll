@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
@@ -32,6 +32,11 @@ export class UsersController {
     @Body() dto: SetMobileMoneyPayoutDto,
   ) {
     return this.usersService.setMobileMoneyPayout(user.id, dto);
+  }
+
+  @Post('me/stripe-connect/onboarding-link')
+  createStripeConnectOnboardingLink(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.createStripeConnectOnboardingLink(user.id);
   }
 
   @Patch('me')

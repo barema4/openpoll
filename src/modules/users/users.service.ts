@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
+import { StripeConnectService } from '../stripe-connect/stripe-connect.service';
 import type { PlatformRole } from '../../../generated/prisma/enums';
 import { getSupportedCountry } from '../../config/supported-countries';
 import { resolveEffectivePlatformRole } from '../../common/guards/resolve-effective-platform-role.util';
@@ -30,6 +31,8 @@ const SELECT = {
   payoutAccountLast4: true,
   payoutMobileProvider: true,
   payoutMobileNumber: true,
+  stripeConnectAccountId: true,
+  stripeConnectPayoutsEnabled: true,
   platformRole: true,
   createdAt: true,
 } as const;
@@ -39,6 +42,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payouts: PayoutsService,
+    private readonly stripeConnect: StripeConnectService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
   ) {}
@@ -183,5 +187,43 @@ export class UsersService {
     });
 
     return this.toProfile(updated);
+  }
+
+  // STRIPE-provider accounts only — mirrors
+  // OrganizationsService.createStripeConnectOnboardingLink.
+  async createStripeConnectOnboardingLink(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, stripeConnectAccountId: true },
+    });
+
+    const accountId = await this.stripeConnect.ensureAccount({
+      existingAccountId: user.stripeConnectAccountId,
+      ownerType: 'USER',
+      ownerId: userId,
+      email: user.email,
+    });
+    if (!user.stripeConnectAccountId) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { stripeConnectAccountId: accountId },
+      });
+    }
+
+    const baseUrl = this.config
+      .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
+      .replace(/\/$/, '');
+    const returnUrl = `${baseUrl}/app/personal-invoices`;
+    const url = await this.stripeConnect.createOnboardingLink(
+      accountId,
+      returnUrl,
+    );
+
+    await this.audit.record({
+      userId,
+      action: 'USER_STRIPE_CONNECT_ONBOARDING_STARTED',
+    });
+
+    return { url };
   }
 }

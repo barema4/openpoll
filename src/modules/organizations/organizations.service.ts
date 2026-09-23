@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { EmailService } from '../../email/email.service';
 import { PayoutsService } from '../payouts/payouts.service';
+import { StripeConnectService } from '../stripe-connect/stripe-connect.service';
 import {
   OrgRole,
   OrganizationInvitationStatus,
@@ -38,6 +39,7 @@ export class OrganizationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly payouts: PayoutsService,
+    private readonly stripeConnect: StripeConnectService,
     private readonly config: ConfigService,
     private readonly email: EmailService,
   ) {}
@@ -169,6 +171,50 @@ export class OrganizationsService {
     });
 
     return maskPhone(updated);
+  }
+
+  // STRIPE-provider orgs only — no bank-list/resolve-account step to call
+  // out to, since Stripe Connect's Express onboarding is entirely
+  // hosted: one redirect, not a form. stripeConnectPayoutsEnabled flips
+  // later via StripeConnectWebhookProcessor once onboarding actually
+  // completes, not when this link is merely created.
+  async createStripeConnectOnboardingLink(
+    userId: string,
+    organizationId: string,
+  ) {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { stripeConnectAccountId: true },
+    });
+
+    const accountId = await this.stripeConnect.ensureAccount({
+      existingAccountId: organization.stripeConnectAccountId,
+      ownerType: 'ORGANIZATION',
+      ownerId: organizationId,
+    });
+    if (!organization.stripeConnectAccountId) {
+      await this.prisma.organization.update({
+        where: { id: organizationId },
+        data: { stripeConnectAccountId: accountId },
+      });
+    }
+
+    const baseUrl = this.config
+      .get<string>('PUBLIC_CHECKOUT_BASE_URL')!
+      .replace(/\/$/, '');
+    const returnUrl = `${baseUrl}/app/organizations/${organizationId}?tab=settings`;
+    const url = await this.stripeConnect.createOnboardingLink(
+      accountId,
+      returnUrl,
+    );
+
+    await this.audit.record({
+      userId,
+      action: 'ORGANIZATION_STRIPE_CONNECT_ONBOARDING_STARTED',
+      payload: { organizationId },
+    });
+
+    return { url };
   }
 
   async setBranding(
