@@ -39,20 +39,275 @@ export const SUPPORTED_COUNTRIES: Record<string, SupportedCountry> = {
     provider: 'PAWAPAY',
     chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  // First two Stripe-backed countries — donor charging only for now (see
-  // StripeProvider); Stripe Connect payout onboarding lands in a later
-  // phase, so orgs here have their whole charge land in the platform's own
-  // Stripe balance until then, same fallback already established for an
-  // unconfigured Paystack payout destination.
-  US: {
-    label: 'United States',
-    currency: 'USD',
+
+  // Every other Stripe-supported country (per stripe.com/global, checked
+  // 2026-09) — donor charging (StripeProvider) and payout onboarding
+  // (StripeConnectModule) both already work generically for any STRIPE
+  // entry here, so adding one is exactly this: label + currency, nothing
+  // else. Kenya deliberately stays PAYSTACK above, not STRIPE — Stripe
+  // itself only reaches Kenya through its Paystack acquisition, the same
+  // rail this app already uses directly.
+  AU: {
+    label: 'Australia',
+    currency: 'AUD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  AT: {
+    label: 'Austria',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  BE: {
+    label: 'Belgium',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  BR: {
+    label: 'Brazil',
+    currency: 'BRL',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  BG: {
+    label: 'Bulgaria',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  CA: {
+    label: 'Canada',
+    currency: 'CAD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  HR: {
+    label: 'Croatia',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  CY: {
+    label: 'Cyprus',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  CZ: {
+    label: 'Czech Republic',
+    currency: 'CZK',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  DK: {
+    label: 'Denmark',
+    currency: 'DKK',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  EE: {
+    label: 'Estonia',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  FI: {
+    label: 'Finland',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  FR: {
+    label: 'France',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  DE: {
+    label: 'Germany',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  GI: {
+    label: 'Gibraltar',
+    currency: 'GIP',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  GR: {
+    label: 'Greece',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  HK: {
+    label: 'Hong Kong',
+    currency: 'HKD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  HU: {
+    label: 'Hungary',
+    currency: 'HUF',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  IE: {
+    label: 'Ireland',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  IT: {
+    label: 'Italy',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  JP: {
+    label: 'Japan',
+    currency: 'JPY',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  LV: {
+    label: 'Latvia',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  LI: {
+    label: 'Liechtenstein',
+    currency: 'CHF',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  LT: {
+    label: 'Lithuania',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  LU: {
+    label: 'Luxembourg',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  MY: {
+    label: 'Malaysia',
+    currency: 'MYR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  MT: {
+    label: 'Malta',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  MX: {
+    label: 'Mexico',
+    currency: 'MXN',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  NL: {
+    label: 'Netherlands',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  NZ: {
+    label: 'New Zealand',
+    currency: 'NZD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  NO: {
+    label: 'Norway',
+    currency: 'NOK',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  PL: {
+    label: 'Poland',
+    currency: 'PLN',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  PT: {
+    label: 'Portugal',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  RO: {
+    label: 'Romania',
+    currency: 'RON',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  SG: {
+    label: 'Singapore',
+    currency: 'SGD',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  SK: {
+    label: 'Slovakia',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  SI: {
+    label: 'Slovenia',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  ES: {
+    label: 'Spain',
+    currency: 'EUR',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  SE: {
+    label: 'Sweden',
+    currency: 'SEK',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  CH: {
+    label: 'Switzerland',
+    currency: 'CHF',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  TH: {
+    label: 'Thailand',
+    currency: 'THB',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  AE: {
+    label: 'United Arab Emirates',
+    currency: 'AED',
     provider: 'STRIPE',
     chargeShape: 'REDIRECT',
   },
   GB: {
     label: 'United Kingdom',
     currency: 'GBP',
+    provider: 'STRIPE',
+    chargeShape: 'REDIRECT',
+  },
+  US: {
+    label: 'United States',
+    currency: 'USD',
     provider: 'STRIPE',
     chargeShape: 'REDIRECT',
   },
