@@ -63,27 +63,6 @@ export const envSchema = z.object({
   // Optional so .env.test/CI never need it; unset means the route denies
   // everyone (fail closed, not open).
   PLATFORM_OPERATOR_EMAIL: z.string().email().optional(),
-
-  // Stripe, via its REST API (no SDK — plain fetch, same style as
-  // paystack.provider.ts). One Stripe account/secret key covers three
-  // independent integrations, each with its own webhook endpoint/secret:
-  // - Billing (BillingModule): charges an ORG for OpenPool's own Agency-plan
-  //   subscription revenue — separate concern from donor charging entirely.
-  // - Payments (StripeProvider, PaymentProviderRegistry): charges DONORS on
-  //   an org's behalf, for orgs whose country maps to STRIPE in
-  //   SUPPORTED_COUNTRIES — the same role Paystack/PawaPay play for
-  //   KE/UG.
-  // - Connect (StripeConnectModule): onboards an org/user's own payout
-  //   destination (STRIPE's equivalent of the Paystack subaccount / PawaPay
-  //   mobile-money fields) — account.updated webhook confirms completion.
-  // All optional so dev/test/CI never need real Stripe credentials; the
-  // relevant routes fail closed (BadGatewayException / signature rejection)
-  // if unset rather than silently misbehaving.
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_BILLING_WEBHOOK_SECRET: z.string().optional(),
-  STRIPE_AGENCY_PRICE_ID: z.string().optional(),
-  STRIPE_DONOR_WEBHOOK_SECRET: z.string().optional(),
-  STRIPE_CONNECT_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

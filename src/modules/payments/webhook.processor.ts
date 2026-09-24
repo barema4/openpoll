@@ -7,7 +7,6 @@ import {
   InvoiceStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
-import { DEFAULT_COUNTRY_CODE } from '../../config/supported-countries';
 import { WEBHOOK_QUEUE } from './payments.constants';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from './providers/payment-provider.interface';
@@ -56,7 +55,7 @@ export class WebhookProcessor extends WorkerHost {
     // provider (Paystack/Kenya or PawaPay/Uganda) this event's organization uses.
     let amountSettled = event.amountSettled;
     if (event.status === TransactionStatus.SUCCESS) {
-      const provider = await this.resolveProviderForEvent(eventId);
+      const provider = this.providers.byName(event.provider);
       const verified = await provider.verifyTransaction(
         event.providerReference,
       );
@@ -83,10 +82,6 @@ export class WebhookProcessor extends WorkerHost {
     // any charge-time record we could otherwise diff against.
     const platformFeeAmount = event.platformFeeAmount ?? 0;
     const netAmountSettled = amountSettled - platformFeeAmount;
-    const { currency } = await this.prisma.event.findUniqueOrThrow({
-      where: { id: eventId },
-      select: { currency: true },
-    });
 
     const transaction = await this.prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
@@ -96,7 +91,12 @@ export class WebhookProcessor extends WorkerHost {
           providerReference: event.providerReference,
           paymentRail: event.paymentRail,
           amountSettled: netAmountSettled,
-          currency,
+          // The actually-charged currency, not the event's own — these
+          // differ exactly when this is a secondary-currency (e.g. diaspora
+          // card) contribution, which is the signal every aggregate keys
+          // off to exclude it from the event's primary total.
+          currency: event.currency,
+          gateway: event.provider,
           platformFeeAmount,
           status: event.status,
         },
@@ -156,18 +156,5 @@ export class WebhookProcessor extends WorkerHost {
       select: { eventId: true },
     });
     return invoice?.eventId ?? null;
-  }
-
-  private async resolveProviderForEvent(eventId: string) {
-    const event = await this.prisma.event.findUniqueOrThrow({
-      where: { id: eventId },
-      select: { organization: { select: { country: true } } },
-    });
-    // No organization (deleted/orphaned) defaults to the registry's fallback
-    // (Kenya) — should never happen in practice since events always start
-    // with an organization.
-    return this.providers.forCountry(
-      event.organization?.country ?? DEFAULT_COUNTRY_CODE,
-    );
   }
 }

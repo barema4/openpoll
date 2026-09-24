@@ -195,7 +195,7 @@ describe('PersonalInvoicesService.findByToken', () => {
       status: PersonalInvoiceStatus.PENDING,
       expiresAt: null,
       amount: '500',
-      issuer: { id: 'user-1', name: 'Alice' },
+      issuer: { id: 'user-1', name: 'Alice', country: 'KE' },
       ...overrides,
     };
   }
@@ -297,10 +297,9 @@ describe('PersonalInvoicesService.findByToken', () => {
 });
 
 describe('PersonalInvoicesService.initializeCheckout', () => {
-  it('charges the gross (base + fee) amount and carries the fee in metadata, crediting the issuer with the base amount', async () => {
+  it('charges the gross (base + fee) amount via mobile money and carries the fee in metadata, crediting the issuer with the base amount', async () => {
     const initializeCharge = jest.fn().mockResolvedValue({
-      status: 'redirect',
-      authorizationUrl: 'https://paystack.test/pay',
+      status: 'pending',
       reference: 'ref-1',
     });
     const feeProviders = {
@@ -336,13 +335,15 @@ describe('PersonalInvoicesService.initializeCheckout', () => {
 
     await service.initializeCheckout('tok-abc', {
       payerEmail: 'payer@example.com',
+      paymentMethod: 'MPESA_KEN',
+      phoneNumber: '254712345678',
     });
 
     expect(initializeCharge).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 1015,
-        subaccountCode: 'ACCT_123',
-        platformFeeAmount: 15,
+        currency: 'KES',
+        mobileMoney: { phoneNumber: '254712345678', provider: 'MPESA_KEN' },
         metadata: expect.objectContaining({
           personalInvoiceId: 'pi-1',
           platformFeeAmount: 15,

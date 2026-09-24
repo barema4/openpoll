@@ -118,12 +118,13 @@ describe('TransactionsService.refund', () => {
       amountSettled: '1000',
       platformFeeAmount: '15',
       status: TransactionStatus.SUCCESS,
-      event: { organization: { country: 'KE' } },
+      gateway: 'PAYSTACK',
+      currency: 'KES',
       ...overrides,
     };
   }
 
-  it('initiates a Paystack refund for a Kenya transaction and stores it PROCESSING', async () => {
+  it('initiates a Paystack refund for a transaction processed via Paystack and stores it PROCESSING', async () => {
     const transaction = makeTransaction();
     const refundUpsert = jest.fn().mockResolvedValue({ id: 'refund-1' });
     const prisma = {
@@ -169,9 +170,10 @@ describe('TransactionsService.refund', () => {
     });
   });
 
-  it('initiates a PawaPay refund for a Uganda transaction with the gross amount in UGX', async () => {
+  it('initiates a PawaPay refund for a transaction processed via PawaPay with the gross amount in UGX', async () => {
     const transaction = makeTransaction({
-      event: { organization: { country: 'UG' } },
+      gateway: 'PAWAPAY',
+      currency: 'UGX',
     });
     const refundUpsert = jest.fn().mockResolvedValue({ id: 'refund-1' });
     const prisma = {

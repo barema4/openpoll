@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
@@ -16,7 +16,9 @@ import type { EventStatus } from '../../../generated/prisma/enums';
 import {
   DEFAULT_COUNTRY_CODE,
   currencyForCountry,
+  getSupportedCountry,
 } from '../../config/supported-countries';
+import { MOBILE_MONEY_PROVIDERS_BY_COUNTRY } from '../payments/providers/payment-provider.interface';
 
 @Injectable()
 export class EventsService {
@@ -124,8 +126,17 @@ export class EventsService {
           _sum: { allocatedFunds: true },
         }),
       ]);
+    const countryCode = event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    const { chargeShape } = getSupportedCountry(countryCode);
+    const mobileMoneyOperators =
+      MOBILE_MONEY_PROVIDERS_BY_COUNTRY[
+        countryCode as keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY
+      ] ?? [];
+
     return {
       ...event,
+      chargeShape,
+      mobileMoneyOperators,
       totalReceived: receivedAggregate._sum.amountSettled ?? 0,
       totalAllocatable: allocatableAggregate._sum.amountSettled ?? 0,
       totalAllocated: allocatedAggregate._sum.allocatedFunds ?? 0,
@@ -160,8 +171,14 @@ export class EventsService {
   async setPayout(userId: string, eventId: string, dto: SetPayoutDto) {
     const event = await this.prisma.event.findUniqueOrThrow({
       where: { id: eventId },
-      select: { title: true },
+      select: { title: true, organization: { select: { country: true } } },
     });
+    const countryCode = event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    if (getSupportedCountry(countryCode).provider !== 'PAYSTACK') {
+      throw new ForbiddenException(
+        'Bank-account payouts are only available for events on the Paystack payout rail',
+      );
+    }
 
     const details = await this.payouts.onboard({
       businessName: event.title,

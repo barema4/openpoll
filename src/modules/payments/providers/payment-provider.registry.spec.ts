@@ -4,22 +4,34 @@ import type { PaymentProvider } from './payment-provider.interface';
 describe('PaymentProviderRegistry.forCountry', () => {
   const paystack = {} as unknown as PaymentProvider;
   const pawapay = {} as unknown as PaymentProvider;
-  const stripe = {} as unknown as PaymentProvider;
-  const registry = new PaymentProviderRegistry(paystack, pawapay, stripe);
+  const registry = new PaymentProviderRegistry(paystack, pawapay);
 
-  it('resolves Paystack for a Kenya country code', () => {
-    expect(registry.forCountry('KE')).toBe(paystack);
+  it('resolves PawaPay for a Kenya country code', () => {
+    expect(registry.forCountry('KE')).toBe(pawapay);
   });
 
   it('resolves PawaPay for a Uganda country code', () => {
     expect(registry.forCountry('UG')).toBe(pawapay);
   });
 
-  it('resolves Stripe for a US country code', () => {
-    expect(registry.forCountry('US')).toBe(stripe);
-  });
-
   it('throws for an unmapped country code rather than silently defaulting', () => {
     expect(() => registry.forCountry('ZZ')).toThrow(/Unsupported country code/);
+  });
+});
+
+describe('PaymentProviderRegistry.byName', () => {
+  const paystack = {} as unknown as PaymentProvider;
+  const pawapay = {} as unknown as PaymentProvider;
+  const registry = new PaymentProviderRegistry(paystack, pawapay);
+
+  // Historical lookups (verifying/refunding a transaction against the
+  // gateway that actually processed it) must still resolve PAYSTACK
+  // correctly even though no country maps to it any more.
+  it('resolves Paystack by name for historical transactions', () => {
+    expect(registry.byName('PAYSTACK')).toBe(paystack);
+  });
+
+  it('resolves PawaPay by name', () => {
+    expect(registry.byName('PAWAPAY')).toBe(pawapay);
   });
 });

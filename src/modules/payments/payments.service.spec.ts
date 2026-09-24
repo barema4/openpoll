@@ -49,10 +49,9 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
     } as unknown as PrismaService;
   }
 
-  it('charges the gross (base + fee) amount, crediting the event with exactly the payer-chosen amount via metadata', async () => {
+  it('charges the gross (base + fee) amount via mobile money, crediting the event with exactly the payer-chosen amount via metadata', async () => {
     const initializeCharge = jest.fn().mockResolvedValue({
-      status: 'redirect',
-      authorizationUrl: 'https://paystack.test/pay',
+      status: 'pending',
       reference: 'ref-1',
     });
     const providers = {
@@ -69,13 +68,15 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
     await service.initializeCheckout('tok-abc', {
       email: 'payer@example.com',
       amount: 1000,
+      paymentMethod: 'MPESA_KEN',
+      phoneNumber: '254712345678',
     });
 
     expect(initializeCharge).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 1015,
-        subaccountCode: 'ACCT_123',
-        platformFeeAmount: 15,
+        currency: 'KES',
+        mobileMoney: { phoneNumber: '254712345678', provider: 'MPESA_KEN' },
         metadata: expect.objectContaining({
           invoiceId: 'inv-1',
           eventId: 'event-1',
@@ -87,8 +88,7 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
 
   it('charges the exact amount with no fee when PLATFORM_FEE_PERCENT is 0', async () => {
     const initializeCharge = jest.fn().mockResolvedValue({
-      status: 'redirect',
-      authorizationUrl: 'https://paystack.test/pay',
+      status: 'pending',
       reference: 'ref-1',
     });
     const providers = {
@@ -105,10 +105,15 @@ describe('PaymentsService.initializeCheckout — platform fee', () => {
     await service.initializeCheckout('tok-abc', {
       email: 'payer@example.com',
       amount: 1000,
+      paymentMethod: 'MPESA_KEN',
+      phoneNumber: '254712345678',
     });
 
     expect(initializeCharge).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 1000, platformFeeAmount: 0 }),
+      expect.objectContaining({
+        amount: 1000,
+        metadata: expect.objectContaining({ platformFeeAmount: 0 }) as unknown,
+      }),
     );
   });
 
@@ -221,10 +226,9 @@ describe('PaymentsService.initiateDeposit', () => {
     ).rejects.toThrow(/phone number/i);
   });
 
-  it('redirects via the org subaccount with zero fee for a Kenya deposit', async () => {
+  it('deposits via mobile money with zero fee for a Kenya event', async () => {
     const initializeCharge = jest.fn().mockResolvedValue({
-      status: 'redirect',
-      authorizationUrl: 'https://paystack.test/pay',
+      status: 'pending',
       reference: 'ref-1',
     });
     const providers = {
@@ -232,7 +236,7 @@ describe('PaymentsService.initiateDeposit', () => {
     } as unknown as PaymentProviderRegistry;
     const prisma = makePrismaForEvent({
       id: 'event-1',
-      gatewayWalletId: 'ACCT_123',
+      gatewayWalletId: null,
       organization: { country: 'KE', gatewayWalletId: null },
     });
     const service = new PaymentsService(
@@ -244,14 +248,15 @@ describe('PaymentsService.initiateDeposit', () => {
 
     await service.initiateDeposit(user, 'event-1', {
       amount: 1000,
-      paymentMethod: 'card',
+      paymentMethod: 'MPESA_KEN',
+      phoneNumber: '254712345678',
     });
 
     expect(initializeCharge).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 1000,
-        subaccountCode: 'ACCT_123',
-        channels: ['card'],
+        currency: 'KES',
+        mobileMoney: { phoneNumber: '254712345678', provider: 'MPESA_KEN' },
         metadata: { eventId: 'event-1', platformFeeAmount: 0 },
       }),
     );

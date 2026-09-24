@@ -14,10 +14,7 @@ import {
   getSupportedCountry,
 } from '../../config/supported-countries';
 import { PaymentProviderRegistry } from './providers/payment-provider.registry';
-import {
-  MOBILE_MONEY_PROVIDERS,
-  type MobileMoneyProvider,
-} from './providers/payment-provider.interface';
+import { isMobileMoneyProviderForCountry } from './providers/payment-provider.interface';
 import { calculatePlatformFee } from './platform-fee.util';
 import type { InitiateCheckoutDto } from './dto/initiate-checkout.dto';
 import type { InitiateDepositDto } from './dto/initiate-deposit.dto';
@@ -90,9 +87,12 @@ export class PaymentsService {
     };
 
     if (chargeShape === 'MOBILE_MONEY_PUSH') {
-      if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
+      if (
+        !dto.phoneNumber ||
+        !isMobileMoneyProviderForCountry(countryCode, dto.paymentMethod)
+      ) {
         throw new BadRequestException(
-          'A phone number and network (MTN or Airtel) are required to pay this event',
+          'A phone number and a supported mobile money network are required to pay this event',
         );
       }
       return provider.initializeCharge({
@@ -122,7 +122,8 @@ export class PaymentsService {
       metadata,
       callbackUrl: `${checkoutBaseUrl}/receipt`,
       channels:
-        dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)
+        dto.paymentMethod &&
+        !isMobileMoneyProviderForCountry(countryCode, dto.paymentMethod)
           ? [dto.paymentMethod]
           : undefined,
     });
@@ -154,9 +155,12 @@ export class PaymentsService {
     const metadata = { eventId, platformFeeAmount: 0 };
 
     if (chargeShape === 'MOBILE_MONEY_PUSH') {
-      if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
+      if (
+        !dto.phoneNumber ||
+        !isMobileMoneyProviderForCountry(countryCode, dto.paymentMethod)
+      ) {
         throw new BadRequestException(
-          'A phone number and network (MTN or Airtel) are required to deposit into this event',
+          'A phone number and a supported mobile money network are required to deposit into this event',
         );
       }
       const result = await provider.initializeCharge({
@@ -194,7 +198,8 @@ export class PaymentsService {
       metadata,
       callbackUrl: `${checkoutBaseUrl}/receipt`,
       channels:
-        dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)
+        dto.paymentMethod &&
+        !isMobileMoneyProviderForCountry(countryCode, dto.paymentMethod)
           ? [dto.paymentMethod]
           : undefined,
     });
@@ -272,10 +277,4 @@ export class PaymentsService {
     }
     return amount;
   }
-}
-
-function isMobileMoneyProvider(
-  value: string | undefined,
-): value is MobileMoneyProvider {
-  return (MOBILE_MONEY_PROVIDERS as readonly string[]).includes(value ?? '');
 }

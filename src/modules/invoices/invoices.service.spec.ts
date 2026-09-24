@@ -24,6 +24,7 @@ describe('InvoicesService.findByToken — platform fee', () => {
       expiresAt: null,
       amountRequested: '1000',
       amountPaid: '400',
+      event: { organization: { country: 'KE' } },
     };
     const prisma = {
       invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },
@@ -44,6 +45,7 @@ describe('InvoicesService.findByToken — platform fee', () => {
       expiresAt: null,
       amountRequested: null,
       amountPaid: '0',
+      event: { organization: { country: 'KE' } },
     };
     const prisma = {
       invoice: { findUnique: jest.fn().mockResolvedValue(invoice) },

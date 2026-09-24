@@ -133,6 +133,30 @@ export class PlatformAdminService {
     return updated;
   }
 
+  // No self-serve billing exists for the Agency plan (Stripe billing was
+  // removed) — a platform staff member flips this on manually for a paying
+  // agency instead. See AgencyClientsService.assertCanLinkAnotherClient,
+  // the sole consumer of this flag.
+  async setAgencyPlan(
+    actingUserId: string,
+    organizationId: string,
+    hasAgencyPlan: boolean,
+  ) {
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { hasAgencyPlan },
+      select: { id: true, name: true, hasAgencyPlan: true },
+    });
+
+    await this.audit.record({
+      userId: actingUserId,
+      action: hasAgencyPlan ? 'AGENCY_PLAN_GRANTED' : 'AGENCY_PLAN_REVOKED',
+      payload: { organizationId },
+    });
+
+    return updated;
+  }
+
   async getInvitationPreview(rawToken: string) {
     const invitation = await this.prisma.platformStaffInvitation.findUnique({
       where: { tokenHash: hashToken(rawToken) },

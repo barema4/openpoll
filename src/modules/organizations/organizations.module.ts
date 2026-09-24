@@ -4,11 +4,10 @@ import { OrganizationsController } from './organizations.controller';
 import { PublicOrganizationInvitationsController } from './public-organization-invitations.controller';
 import { PublicSupportedCountriesController } from './public-supported-countries.controller';
 import { PayoutsModule } from '../payouts/payouts.module';
-import { StripeConnectModule } from '../stripe-connect/stripe-connect.module';
 import { EmailModule } from '../../email/email.module';
 
 @Module({
-  imports: [PayoutsModule, StripeConnectModule, EmailModule],
+  imports: [PayoutsModule, EmailModule],
   controllers: [
     OrganizationsController,
     PublicOrganizationInvitationsController,

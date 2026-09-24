@@ -1,61 +1,35 @@
 import * as bcrypt from 'bcrypt';
+import { ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { PayoutsService } from '../payouts/payouts.service';
-import type { StripeConnectService } from '../stripe-connect/stripe-connect.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { ConfigService } from '@nestjs/config';
 
 const config = { get: jest.fn() } as unknown as ConfigService;
 
 describe('UsersService.setPayout', () => {
-  it('onboards the payout with the user name as businessName and persists the result', async () => {
-    const onboard = jest.fn().mockResolvedValue({
-      gatewayWalletId: 'ACCT_test123',
-      payoutBankName: 'Equity Bank',
-      payoutAccountName: 'JANE DOE',
-      payoutAccountLast4: '6789',
-    });
+  it('rejects bank-account payout onboarding now that Paystack is retired', async () => {
+    const onboard = jest.fn();
     const payouts = { onboard } as unknown as PayoutsService;
-    const update = jest.fn().mockResolvedValue({ id: 'user-1' });
     const prisma = {
       user: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ name: 'Jane Doe' }),
-        update,
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: 'Jane Doe', country: 'KE' }),
       },
     } as unknown as PrismaService;
     const audit = { record: jest.fn() } as unknown as AuditService;
-    const service = new UsersService(
-      prisma,
-      payouts,
-      {} as StripeConnectService,
-      audit,
-      config,
-    );
+    const service = new UsersService(prisma, payouts, audit, config);
 
-    await service.setPayout('user-1', {
-      bankCode: '011',
-      bankName: 'Equity Bank',
-      accountNumber: '0123456789',
-    });
-
-    expect(onboard).toHaveBeenCalledWith({
-      businessName: 'Jane Doe',
-      bankCode: '011',
-      bankName: 'Equity Bank',
-      accountNumber: '0123456789',
-    });
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'user-1' },
-        data: {
-          gatewayWalletId: 'ACCT_test123',
-          payoutBankName: 'Equity Bank',
-          payoutAccountName: 'JANE DOE',
-          payoutAccountLast4: '6789',
-        },
+    await expect(
+      service.setPayout('user-1', {
+        bankCode: '011',
+        bankName: 'Equity Bank',
+        accountNumber: '0123456789',
       }),
-    );
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(onboard).not.toHaveBeenCalled();
   });
 });
 
@@ -70,7 +44,6 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -92,7 +65,6 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -124,7 +96,6 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -150,7 +121,6 @@ describe('UsersService.updateProfile', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -168,7 +138,7 @@ describe('UsersService.updateProfile', () => {
 describe('UsersService.setMobileMoneyPayout', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
 
-  it('rejects when the user is not on the Uganda country setting', async () => {
+  it("rejects an operator that doesn't belong to the account's country", async () => {
     const prisma = {
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
@@ -177,7 +147,6 @@ describe('UsersService.setMobileMoneyPayout', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -185,9 +154,9 @@ describe('UsersService.setMobileMoneyPayout', () => {
     await expect(
       service.setMobileMoneyPayout('user-1', {
         provider: 'MTN_MOMO_UGA',
-        phoneNumber: '256771234567',
+        phoneNumber: '254712345678',
       }),
-    ).rejects.toThrow(/only available/i);
+    ).rejects.toThrow(/not a mobile money network available/i);
   });
 
   it('stores the provider/number and masks the number to last 4', async () => {
@@ -204,7 +173,6 @@ describe('UsersService.setMobileMoneyPayout', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -230,54 +198,6 @@ describe('UsersService.setMobileMoneyPayout', () => {
   });
 });
 
-describe('UsersService.createStripeConnectOnboardingLink', () => {
-  it('creates a Stripe account and persists it when the user has none yet', async () => {
-    const update = jest.fn();
-    const prisma = {
-      user: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({
-          email: 'jane@example.com',
-          stripeConnectAccountId: null,
-        }),
-        update,
-      },
-    } as unknown as PrismaService;
-    const audit = { record: jest.fn() } as unknown as AuditService;
-    const ensureAccount = jest.fn().mockResolvedValue('acct_new');
-    const createOnboardingLink = jest
-      .fn()
-      .mockResolvedValue('https://connect.stripe.com/setup/abc');
-    const stripeConnect = {
-      ensureAccount,
-      createOnboardingLink,
-    } as unknown as StripeConnectService;
-    const urlConfig = {
-      get: jest.fn(() => 'http://localhost:5173'),
-    } as unknown as ConfigService;
-    const service = new UsersService(
-      prisma,
-      {} as PayoutsService,
-      stripeConnect,
-      audit,
-      urlConfig,
-    );
-
-    const result = await service.createStripeConnectOnboardingLink('user-1');
-
-    expect(ensureAccount).toHaveBeenCalledWith({
-      existingAccountId: null,
-      ownerType: 'USER',
-      ownerId: 'user-1',
-      email: 'jane@example.com',
-    });
-    expect(update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { stripeConnectAccountId: 'acct_new' },
-    });
-    expect(result).toEqual({ url: 'https://connect.stripe.com/setup/abc' });
-  });
-});
-
 describe('UsersService.changePassword', () => {
   it('rejects an incorrect current password', async () => {
     const prisma = {
@@ -292,7 +212,6 @@ describe('UsersService.changePassword', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );
@@ -321,7 +240,6 @@ describe('UsersService.changePassword', () => {
     const service = new UsersService(
       prisma,
       {} as PayoutsService,
-      {} as StripeConnectService,
       audit,
       config,
     );

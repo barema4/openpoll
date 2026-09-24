@@ -13,8 +13,8 @@ import { PersonalInvoiceStatus } from '../../../generated/prisma/enums';
 import { getSupportedCountry } from '../../config/supported-countries';
 import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import {
-  MOBILE_MONEY_PROVIDERS,
-  type MobileMoneyProvider,
+  isMobileMoneyProviderForCountry,
+  MOBILE_MONEY_PROVIDERS_BY_COUNTRY,
 } from '../payments/providers/payment-provider.interface';
 import { calculatePlatformFee } from '../payments/platform-fee.util';
 import { buildPersonalInvoiceShareLinks } from './share-links.util';
@@ -26,12 +26,6 @@ const DEFAULT_EXPIRY_DAYS = 30;
 const PUBLIC_INCLUDE = {
   issuer: { select: { id: true, name: true, country: true } },
 } as const;
-
-function isMobileMoneyProvider(
-  value: string | undefined,
-): value is MobileMoneyProvider {
-  return (MOBILE_MONEY_PROVIDERS as readonly string[]).includes(value ?? '');
-}
 
 @Injectable()
 export class PersonalInvoicesService {
@@ -166,10 +160,28 @@ export class PersonalInvoicesService {
         data: { status: PersonalInvoiceStatus.EXPIRED },
         include: PUBLIC_INCLUDE,
       });
-      return this.withFeeBreakdown(expired);
+      return this.withMobileMoneyInfo(this.withFeeBreakdown(expired));
     }
 
-    return this.withFeeBreakdown(invoice);
+    return this.withMobileMoneyInfo(this.withFeeBreakdown(invoice));
+  }
+
+  // Tells the pay page which chargeShape the issuer's country uses and,
+  // for MOBILE_MONEY_PUSH, which operators to offer — mirrors
+  // InvoicesService.withMobileMoneyInfo for the equivalent event-invoice
+  // pay page.
+  private withMobileMoneyInfo<T extends { issuer: { country: string } }>(
+    invoice: T,
+  ): T & {
+    chargeShape: ReturnType<typeof getSupportedCountry>['chargeShape'];
+    mobileMoneyOperators: (typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY)[keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY];
+  } {
+    const { chargeShape } = getSupportedCountry(invoice.issuer.country);
+    const mobileMoneyOperators =
+      MOBILE_MONEY_PROVIDERS_BY_COUNTRY[
+        invoice.issuer.country as keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY
+      ] ?? [];
+    return { ...invoice, chargeShape, mobileMoneyOperators };
   }
 
   // Precomputed here (rather than left to the frontend) since a personal
@@ -250,9 +262,15 @@ export class PersonalInvoicesService {
     const metadata = { personalInvoiceId: invoice.id, platformFeeAmount };
 
     if (chargeShape === 'MOBILE_MONEY_PUSH') {
-      if (!dto.phoneNumber || !isMobileMoneyProvider(dto.paymentMethod)) {
+      if (
+        !dto.phoneNumber ||
+        !isMobileMoneyProviderForCountry(
+          invoice.issuer.country,
+          dto.paymentMethod,
+        )
+      ) {
         throw new BadRequestException(
-          'A phone number and network (MTN or Airtel) are required to pay this invoice',
+          'A phone number and a supported mobile money network are required to pay this invoice',
         );
       }
       result = await provider.initializeCharge({
@@ -281,7 +299,11 @@ export class PersonalInvoicesService {
         metadata,
         callbackUrl: `${checkoutBaseUrl}/i/${token}`,
         channels:
-          dto.paymentMethod && !isMobileMoneyProvider(dto.paymentMethod)
+          dto.paymentMethod &&
+          !isMobileMoneyProviderForCountry(
+            invoice.issuer.country,
+            dto.paymentMethod,
+          )
             ? [dto.paymentMethod]
             : undefined,
       });

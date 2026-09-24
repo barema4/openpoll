@@ -19,10 +19,6 @@ import {
   RefundStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
-import {
-  DEFAULT_COUNTRY_CODE,
-  getSupportedCountry,
-} from '../../config/supported-countries';
 import type { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
 import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { paginate } from '../../common/pagination.util';
@@ -79,7 +75,6 @@ export class TransactionsService {
   async refund(userId: string, transactionId: string) {
     const transaction = await this.prisma.transaction.findUniqueOrThrow({
       where: { id: transactionId },
-      include: { event: { include: { organization: true } } },
     });
 
     if (transaction.status !== TransactionStatus.SUCCESS) {
@@ -105,21 +100,22 @@ export class TransactionsService {
 
     const grossAmount =
       Number(transaction.amountSettled) + Number(transaction.platformFeeAmount);
-    const countryCode =
-      transaction.event.organization?.country ?? DEFAULT_COUNTRY_CODE;
-    const { provider, currency } = getSupportedCountry(countryCode);
 
     let providerReference: string | undefined;
     let accepted: boolean;
     let failureMessage: string | undefined;
 
-    if (provider === 'PAWAPAY') {
+    // Branch on the gateway that actually processed this transaction
+    // (persisted at creation time), not the organization's current
+    // country — a provider cutover (e.g. Kenya moving from Paystack to
+    // PawaPay) means those can disagree for an older transaction.
+    if (transaction.gateway === 'PAWAPAY') {
       const refundId = randomUUID();
       const result = await this.pawapay.initiateRefund({
         refundId,
         depositId: transaction.providerReference,
         amount: grossAmount,
-        currency,
+        currency: transaction.currency,
       });
       providerReference = refundId;
       accepted = result.accepted;

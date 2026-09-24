@@ -93,6 +93,15 @@ export class PawaPayProvider implements PaymentProvider {
         'PawaPay charges require a phone number and network — mobileMoney params missing',
       );
     }
+    if (!params.currency) {
+      // No safe default now that PawaPay spans ~20 countries with different
+      // currencies — silently falling back to one (Uganda's UGX, the
+      // original single-country default) would misroute the charge amount
+      // for every other country instead of failing loudly.
+      throw new BadGatewayException(
+        'PawaPay charges require an explicit currency',
+      );
+    }
 
     // TODO(verify against real PawaPay sandbox): metadata array field names
     // (fieldName/fieldValue) are inferred from the docs summary, not a raw
@@ -110,7 +119,7 @@ export class PawaPayProvider implements PaymentProvider {
       body: JSON.stringify({
         depositId: params.reference,
         amount: String(params.amount),
-        currency: params.currency ?? 'UGX',
+        currency: params.currency,
         payer: {
           type: 'MMO',
           accountDetails: {
@@ -299,6 +308,8 @@ export class PawaPayProvider implements PaymentProvider {
       platformFeeAmount: metadata.platformFeeAmount
         ? Number(metadata.platformFeeAmount)
         : undefined,
+      provider: 'PAWAPAY',
+      currency: payload.currency,
     };
   }
 

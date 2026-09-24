@@ -61,7 +61,7 @@ describe('AgencyClientsService.createClient', () => {
     );
   });
 
-  it('allows a 2nd+ client when the agency has an active plan', async () => {
+  it('allows a 2nd+ client when the agency has the plan flag on', async () => {
     const organizationCreate = jest
       .fn()
       .mockResolvedValue({ id: 'client-org-2', name: 'Client Co 2' });
@@ -73,9 +73,7 @@ describe('AgencyClientsService.createClient', () => {
     const prisma = {
       agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
       organization: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({
-          agencyPlanExpiresAt: new Date(Date.now() + 1000 * 60 * 60),
-        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ hasAgencyPlan: true }),
       },
       $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(tx)),
     } as unknown as PrismaService;
@@ -92,34 +90,13 @@ describe('AgencyClientsService.createClient', () => {
     );
   });
 
-  it('rejects a 2nd+ client when the agency has no active plan', async () => {
+  it('rejects a 2nd+ client when the agency plan flag is off', async () => {
     const prisma = {
       agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
       organization: {
         findUniqueOrThrow: jest
           .fn()
-          .mockResolvedValue({ agencyPlanExpiresAt: null }),
-      },
-      $transaction: jest.fn(),
-    } as unknown as PrismaService;
-    const service = new AgencyClientsService(prisma, audit);
-
-    await expect(
-      service.createClient('agency-org-1', 'user-1', {
-        name: 'Client Co 2',
-        type: OrganizationType.OTHER,
-        country: 'KE',
-      }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  it('rejects a 2nd+ client when the agency plan has expired', async () => {
-    const prisma = {
-      agencyClientLink: { count: jest.fn().mockResolvedValue(1) },
-      organization: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({
-          agencyPlanExpiresAt: new Date(Date.now() - 1000 * 60 * 60),
-        }),
+          .mockResolvedValue({ hasAgencyPlan: false }),
       },
       $transaction: jest.fn(),
     } as unknown as PrismaService;

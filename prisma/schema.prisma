@@ -39,14 +39,6 @@ model User {
   country              String              @default("KE")
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
-  // Stripe Express connected account for this user's own payout destination
-  // (STRIPE-provider countries — see SUPPORTED_COUNTRIES) — the third payout
-  // mechanism alongside the Paystack/PawaPay fields above. Set via
-  // POST /users/me/stripe-connect/onboarding-link; payoutsEnabled flips only
-  // once Stripe's account.updated webhook confirms onboarding actually
-  // completed (details_submitted && payouts_enabled), not at link-creation time.
-  stripeConnectAccountId      String?  @map("stripe_connect_account_id")
-  stripeConnectPayoutsEnabled Boolean  @default(false) @map("stripe_connect_payouts_enabled")
   // Platform-operator access (reconciliation, staff management) — distinct
   // from OrgRole, which is scoped per-organization. Null means a regular
   // user with no admin access at all. See resolve-effective-platform-role.ts
@@ -136,14 +128,6 @@ model Organization {
   // to the last 4 digits in API responses.
   payoutMobileProvider String?             @map("payout_mobile_provider")
   payoutMobileNumber   String?             @map("payout_mobile_number")
-  // Stripe Express connected account — this org's payout destination for
-  // STRIPE-provider countries (see SUPPORTED_COUNTRIES), the third payout
-  // mechanism alongside the two above. Set via
-  // POST /organizations/:id/stripe-connect/onboarding-link; payoutsEnabled
-  // flips only once Stripe's account.updated webhook confirms onboarding
-  // actually completed, not at link-creation time.
-  stripeConnectAccountId      String?  @map("stripe_connect_account_id")
-  stripeConnectPayoutsEnabled Boolean  @default(false) @map("stripe_connect_payouts_enabled")
   // Shown instead of the platform's own badge on public checkout pages
   // (pay/pledge) — set only via PATCH /organizations/:id/branding. A plain
   // URL, same convention as Event.coverImageUrl — no upload pipeline exists
@@ -151,13 +135,12 @@ model Organization {
   logoUrl              String?             @map("logo_url")
   createdAt            DateTime            @default(now()) @map("created_at")
 
-  // Agency plan billing (Stripe subscriptions) — gates linking more than one
-  // client org via AgencyClientLink; the first client is always free. Stripe
-  // is the source of truth (see BillingModule); agencyPlanExpiresAt is a
-  // read-optimized cache of the subscription's current_period_end, updated
-  // by StripeWebhookProcessor. Null/past = no active plan.
-  stripeCustomerId    String?   @unique @map("stripe_customer_id")
-  agencyPlanExpiresAt DateTime? @map("agency_plan_expires_at")
+  // Agency plan — gates linking more than one client org via
+  // AgencyClientLink; the first client is always free. No self-serve
+  // billing exists (Stripe billing was removed) — this is a manual flag a
+  // platform staff member flips on for a paying agency (see
+  // PlatformAdminModule), not something an org can set itself.
+  hasAgencyPlan Boolean @default(false) @map("has_agency_plan")
 
   memberships             OrganizationMembership[]
   events                  Event[]
@@ -440,6 +423,18 @@ enum PaymentRail {
   MANUAL
 }
 
+// Which gateway actually processed a Transaction — persisted at creation
+// time from the webhook that produced it (WebhookProcessor), never
+// re-derived from the organization's current country. An org's country can
+// map to a different provider today than the one that processed a specific
+// past transaction (a provider cutover, e.g. Kenya moving from Paystack to
+// PawaPay), so verifying/refunding that transaction must use this field via
+// PaymentProviderRegistry.byName(), not SUPPORTED_COUNTRIES.
+enum PaymentGateway {
+  PAYSTACK
+  PAWAPAY
+}
+
 enum TransactionStatus {
   PENDING
   SUCCESS
@@ -460,6 +455,11 @@ model Transaction {
   // ISO 4217 code, copied from the event at settlement time — see
   // Event.currency's comment.
   currency          String            @default("KES")
+  // The gateway that actually processed this charge — see PaymentGateway's
+  // comment. Backfilled once from organization.country at migration time
+  // (country and gateway were still 1:1 for every existing row); set going
+  // forward from ParsedWebhookEvent.provider in WebhookProcessor.
+  gateway           PaymentGateway    @default(PAYSTACK)
   categoryTag       String?           @map("category_tag")
   status            TransactionStatus @default(PENDING)
   timestamp         DateTime          @default(now())

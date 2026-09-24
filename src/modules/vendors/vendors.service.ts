@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   PAYSTACK_PROVIDER,
+  isMobileMoneyProviderForCountry,
   type BankPayoutProvider,
 } from '../payments/providers/payment-provider.interface';
 import {
@@ -9,6 +10,7 @@ import {
   VendorPayoutMethod,
 } from '../../../generated/prisma/enums';
 import { resolveOwnerOrganizationIds } from '../../common/agency-link.util';
+import { getSupportedCountry } from '../../config/supported-countries';
 import type { CreateVendorDto } from './dto/create-vendor.dto';
 
 // Fields safe to return to the client — never the raw payoutAccountNumber/
@@ -45,6 +47,15 @@ export class VendorsService {
   // nothing to route incoming charges to.
   async create(dto: CreateVendorDto) {
     if (dto.payoutMethod === VendorPayoutMethod.BANK_ACCOUNT) {
+      const bankOrg = await this.prisma.organization.findUniqueOrThrow({
+        where: { id: dto.organizationId },
+        select: { country: true },
+      });
+      if (getSupportedCountry(bankOrg.country).provider !== 'PAYSTACK') {
+        throw new BadRequestException(
+          'Bank-account vendor payouts are only available for organizations on the Paystack payout rail',
+        );
+      }
       const resolved = await this.paystack.resolveAccountNumber(
         dto.accountNumber!,
         dto.bankCode!,
@@ -62,6 +73,18 @@ export class VendorsService {
         },
         select: SAFE_SELECT,
       });
+    }
+
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: dto.organizationId },
+      select: { country: true },
+    });
+    if (
+      !isMobileMoneyProviderForCountry(organization.country, dto.mobileProvider)
+    ) {
+      throw new BadRequestException(
+        `${dto.mobileProvider} is not a mobile money network available in this organization's country`,
+      );
     }
 
     return this.prisma.vendor.create({

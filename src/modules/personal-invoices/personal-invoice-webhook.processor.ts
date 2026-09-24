@@ -7,7 +7,6 @@ import {
   PersonalInvoiceStatus,
   TransactionStatus,
 } from '../../../generated/prisma/enums';
-import { DEFAULT_COUNTRY_CODE } from '../../config/supported-countries';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from './personal-invoices.constants';
 import { PaymentProviderRegistry } from '../payments/providers/payment-provider.registry';
 import type { ParsedWebhookEvent } from '../payments/providers/payment-provider.interface';
@@ -55,7 +54,7 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
     // issuer uses.
     let amountSettled = event.amountSettled;
     if (event.status === TransactionStatus.SUCCESS) {
-      const provider = await this.resolveProviderForInvoice(personalInvoiceId);
+      const provider = this.providers.byName(event.provider);
       const verified = await provider.verifyTransaction(
         event.providerReference,
       );
@@ -118,15 +117,5 @@ export class PersonalInvoiceWebhookProcessor extends WorkerHost {
         providerReference: event.providerReference,
       },
     });
-  }
-
-  private async resolveProviderForInvoice(personalInvoiceId: string) {
-    const invoice = await this.prisma.personalInvoice.findUniqueOrThrow({
-      where: { id: personalInvoiceId },
-      select: { issuer: { select: { country: true } } },
-    });
-    return this.providers.forCountry(
-      invoice.issuer?.country ?? DEFAULT_COUNTRY_CODE,
-    );
   }
 }

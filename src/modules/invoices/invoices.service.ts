@@ -12,6 +12,11 @@ import type {
 } from './contributor-summary.util';
 import { buildInvoiceShareLinks } from './share-links.util';
 import { calculatePlatformFee } from '../payments/platform-fee.util';
+import {
+  DEFAULT_COUNTRY_CODE,
+  getSupportedCountry,
+} from '../../config/supported-countries';
+import { MOBILE_MONEY_PROVIDERS_BY_COUNTRY } from '../payments/providers/payment-provider.interface';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { CreatePledgeDto } from './dto/create-pledge.dto';
 import type { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
@@ -206,10 +211,32 @@ export class InvoicesService {
         data: { status: InvoiceStatus.EXPIRED },
         include: INVOICE_PUBLIC_INCLUDE,
       });
-      return this.withFeeBreakdown(expired);
+      return this.withMobileMoneyInfo(this.withFeeBreakdown(expired));
     }
 
-    return this.withFeeBreakdown(invoice);
+    return this.withMobileMoneyInfo(this.withFeeBreakdown(invoice));
+  }
+
+  // Tells the pay page which chargeShape this invoice's country uses and,
+  // for MOBILE_MONEY_PUSH, which operators to offer — so it can render the
+  // right network buttons for any PawaPay-backed country instead of a
+  // hardcoded Uganda MTN/Airtel toggle.
+  private withMobileMoneyInfo<
+    T extends { event: { organization: { country: string } | null } },
+  >(
+    invoice: T,
+  ): T & {
+    chargeShape: ReturnType<typeof getSupportedCountry>['chargeShape'];
+    mobileMoneyOperators: (typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY)[keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY];
+  } {
+    const countryCode =
+      invoice.event.organization?.country ?? DEFAULT_COUNTRY_CODE;
+    const { chargeShape } = getSupportedCountry(countryCode);
+    const mobileMoneyOperators =
+      MOBILE_MONEY_PROVIDERS_BY_COUNTRY[
+        countryCode as keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY
+      ] ?? [];
+    return { ...invoice, chargeShape, mobileMoneyOperators };
   }
 
   // A permanent/open-amount link has no fixed amountRequested, so the

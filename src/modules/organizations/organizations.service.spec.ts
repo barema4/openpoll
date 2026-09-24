@@ -3,14 +3,12 @@ import { OrgRole } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../../audit/audit.service';
 import type { PayoutsService } from '../payouts/payouts.service';
-import type { StripeConnectService } from '../stripe-connect/stripe-connect.service';
 import type { ConfigService } from '@nestjs/config';
 import type { EmailService } from '../../email/email.service';
 
 describe('OrganizationsService.listForUser', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {} as unknown as ConfigService;
   const email = { send: jest.fn() } as unknown as EmailService;
 
@@ -35,7 +33,6 @@ describe('OrganizationsService.listForUser', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -72,7 +69,6 @@ describe('OrganizationsService.listForUser', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -98,7 +94,6 @@ describe('OrganizationsService.listForUser', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -142,7 +137,6 @@ describe('OrganizationsService.listForUser', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -163,7 +157,6 @@ describe('OrganizationsService.listForUser', () => {
 describe('OrganizationsService.getOrCreatePersonalOrg', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {} as unknown as ConfigService;
   const email = { send: jest.fn() } as unknown as EmailService;
 
@@ -180,7 +173,6 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -204,7 +196,6 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -237,7 +228,6 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -276,7 +266,6 @@ describe('OrganizationsService.getOrCreatePersonalOrg', () => {
 describe('OrganizationsService.inviteMember', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {
     get: jest.fn().mockReturnValue('http://localhost:5173'),
   } as unknown as ConfigService;
@@ -298,7 +287,6 @@ describe('OrganizationsService.inviteMember', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -344,7 +332,6 @@ describe('OrganizationsService.inviteMember', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -362,7 +349,6 @@ describe('OrganizationsService.inviteMember', () => {
 describe('OrganizationsService.getInvitationPreview', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {} as unknown as ConfigService;
   const email = { send: jest.fn() } as unknown as EmailService;
 
@@ -374,7 +360,6 @@ describe('OrganizationsService.getInvitationPreview', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -400,7 +385,6 @@ describe('OrganizationsService.getInvitationPreview', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -426,7 +410,6 @@ describe('OrganizationsService.getInvitationPreview', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -444,11 +427,10 @@ describe('OrganizationsService.getInvitationPreview', () => {
 describe('OrganizationsService.setMobileMoneyPayout', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {} as unknown as ConfigService;
   const email = { send: jest.fn() } as unknown as EmailService;
 
-  it('rejects a Kenya organization', async () => {
+  it("rejects an operator that doesn't belong to the organization's country", async () => {
     const prisma = {
       organization: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ country: 'KE' }),
@@ -458,19 +440,17 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
 
+    // MTN_MOMO_UGA is Uganda's operator code, not Kenya's (MPESA_KEN).
     await expect(
       service.setMobileMoneyPayout('user-1', 'org-1', {
         provider: 'MTN_MOMO_UGA',
-        phoneNumber: '256771234567',
+        phoneNumber: '254712345678',
       }),
-    ).rejects.toThrow(
-      /only available for organizations on the PawaPay payout rail/i,
-    );
+    ).rejects.toThrow(/not a mobile money network available/i);
   });
 
   it('stores the provider/number and masks the number to last 4 in the response', async () => {
@@ -488,7 +468,6 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -514,93 +493,9 @@ describe('OrganizationsService.setMobileMoneyPayout', () => {
   });
 });
 
-describe('OrganizationsService.createStripeConnectOnboardingLink', () => {
-  const audit = { record: jest.fn() } as unknown as AuditService;
-  const payouts = {} as unknown as PayoutsService;
-  const config = {
-    get: jest.fn(() => 'http://localhost:5173'),
-  } as unknown as ConfigService;
-  const email = { send: jest.fn() } as unknown as EmailService;
-
-  it('creates a Stripe account and persists it when the org has none yet', async () => {
-    const update = jest.fn();
-    const prisma = {
-      organization: {
-        findUniqueOrThrow: jest
-          .fn()
-          .mockResolvedValue({ stripeConnectAccountId: null }),
-        update,
-      },
-    } as unknown as PrismaService;
-    const ensureAccount = jest.fn().mockResolvedValue('acct_new');
-    const createOnboardingLink = jest
-      .fn()
-      .mockResolvedValue('https://connect.stripe.com/setup/abc');
-    const stripeConnect = {
-      ensureAccount,
-      createOnboardingLink,
-    } as unknown as StripeConnectService;
-    const service = new OrganizationsService(
-      prisma,
-      audit,
-      payouts,
-      stripeConnect,
-      config,
-      email,
-    );
-
-    const result = await service.createStripeConnectOnboardingLink(
-      'user-1',
-      'org-1',
-    );
-
-    expect(ensureAccount).toHaveBeenCalledWith({
-      existingAccountId: null,
-      ownerType: 'ORGANIZATION',
-      ownerId: 'org-1',
-    });
-    expect(update).toHaveBeenCalledWith({
-      where: { id: 'org-1' },
-      data: { stripeConnectAccountId: 'acct_new' },
-    });
-    expect(result).toEqual({ url: 'https://connect.stripe.com/setup/abc' });
-  });
-
-  it('reuses an existing Stripe account without writing to the database again', async () => {
-    const update = jest.fn();
-    const prisma = {
-      organization: {
-        findUniqueOrThrow: jest
-          .fn()
-          .mockResolvedValue({ stripeConnectAccountId: 'acct_existing' }),
-        update,
-      },
-    } as unknown as PrismaService;
-    const stripeConnect = {
-      ensureAccount: jest.fn().mockResolvedValue('acct_existing'),
-      createOnboardingLink: jest
-        .fn()
-        .mockResolvedValue('https://connect.stripe.com/setup/xyz'),
-    } as unknown as StripeConnectService;
-    const service = new OrganizationsService(
-      prisma,
-      audit,
-      payouts,
-      stripeConnect,
-      config,
-      email,
-    );
-
-    await service.createStripeConnectOnboardingLink('user-1', 'org-1');
-
-    expect(update).not.toHaveBeenCalled();
-  });
-});
-
 describe('OrganizationsService.setBranding', () => {
   const audit = { record: jest.fn() } as unknown as AuditService;
   const payouts = {} as unknown as PayoutsService;
-  const stripeConnect = {} as unknown as StripeConnectService;
   const config = {} as unknown as ConfigService;
   const email = { send: jest.fn() } as unknown as EmailService;
 
@@ -614,7 +509,6 @@ describe('OrganizationsService.setBranding', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );
@@ -637,7 +531,6 @@ describe('OrganizationsService.setBranding', () => {
       prisma,
       audit,
       payouts,
-      stripeConnect,
       config,
       email,
     );

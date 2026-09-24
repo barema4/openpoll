@@ -79,6 +79,7 @@ interface PaystackWebhookPayload {
   data?: {
     reference: string;
     amount?: number;
+    currency?: string;
     channel?: string;
     status?: string;
     metadata?: {
@@ -529,6 +530,8 @@ export class PaystackProvider
       platformFeeAmount: metadata.platformFeeAmount
         ? Number(metadata.platformFeeAmount)
         : undefined,
+      provider: 'PAYSTACK',
+      currency: data.currency ?? 'KES',
     };
   }
 }

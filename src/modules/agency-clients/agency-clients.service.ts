@@ -70,10 +70,11 @@ export class AgencyClientsService {
     return maskPhone(clientOrganization);
   }
 
-  // The first linked client is free — only the 2nd+ requires an active
-  // Agency plan (see BillingModule/Organization.agencyPlanExpiresAt).
-  // Already-linked clients keep working in full even if the plan lapses;
-  // this only blocks *adding another one*.
+  // The first linked client is free — only the 2nd+ requires the Agency
+  // plan flag (Organization.hasAgencyPlan), a manual flag a platform staff
+  // member flips on for a paying agency — there's no self-serve billing.
+  // Already-linked clients keep working in full even if the flag is later
+  // turned off; this only blocks *adding another one*.
   private async assertCanLinkAnotherClient(agencyOrganizationId: string) {
     const existingClientCount = await this.prisma.agencyClientLink.count({
       where: { agencyOrganizationId },
@@ -82,12 +83,9 @@ export class AgencyClientsService {
 
     const agency = await this.prisma.organization.findUniqueOrThrow({
       where: { id: agencyOrganizationId },
-      select: { agencyPlanExpiresAt: true },
+      select: { hasAgencyPlan: true },
     });
-    const hasActivePlan =
-      agency.agencyPlanExpiresAt !== null &&
-      agency.agencyPlanExpiresAt > new Date();
-    if (!hasActivePlan) {
+    if (!agency.hasAgencyPlan) {
       throw new ForbiddenException(
         'Upgrade to the Agency plan to manage more than one client',
       );

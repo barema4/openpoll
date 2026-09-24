@@ -20,6 +20,8 @@ describe('PersonalInvoiceWebhookProcessor', () => {
         status: TransactionStatus.SUCCESS,
         paymentRail: PaymentRail.CARD,
         personalInvoiceId: 'pi-1',
+        provider: 'PAYSTACK',
+        currency: 'KES',
         ...overrides,
       },
     } as unknown as Job;
@@ -47,7 +49,7 @@ describe('PersonalInvoiceWebhookProcessor', () => {
 
   function makeProviders(verifyTransaction: jest.Mock) {
     return {
-      forCountry: jest.fn().mockReturnValue({ verifyTransaction }),
+      byName: jest.fn().mockReturnValue({ verifyTransaction }),
     } as unknown as PaymentProviderRegistry;
   }
 

@@ -21,6 +21,8 @@ describe('WebhookProcessor', () => {
         paymentRail: PaymentRail.CARD,
         invoiceId: 'inv-1',
         eventId: 'event-1',
+        provider: 'PAYSTACK',
+        currency: 'KES',
         ...overrides,
       },
     } as unknown as Job;
@@ -66,7 +68,7 @@ describe('WebhookProcessor', () => {
 
   function makeProviders(verifyTransaction: jest.Mock) {
     return {
-      forCountry: jest.fn().mockReturnValue({ verifyTransaction }),
+      byName: jest.fn().mockReturnValue({ verifyTransaction }),
     } as unknown as PaymentProviderRegistry;
   }
 

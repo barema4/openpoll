@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { getSupportedCountry } from '../../../config/supported-countries';
+import {
+  getSupportedCountry,
+  type PaymentProviderName,
+} from '../../../config/supported-countries';
 import {
   PAWAPAY_PROVIDER,
   PAYSTACK_PROVIDER,
-  STRIPE_PROVIDER,
   type PaymentProvider,
 } from './payment-provider.interface';
 
@@ -17,15 +19,27 @@ export class PaymentProviderRegistry {
   constructor(
     @Inject(PAYSTACK_PROVIDER) private readonly paystack: PaymentProvider,
     @Inject(PAWAPAY_PROVIDER) private readonly pawapay: PaymentProvider,
-    @Inject(STRIPE_PROVIDER) private readonly stripe: PaymentProvider,
   ) {}
 
   forCountry(countryCode: string): PaymentProvider {
     switch (getSupportedCountry(countryCode).provider) {
       case 'PAWAPAY':
         return this.pawapay;
-      case 'STRIPE':
-        return this.stripe;
+      case 'PAYSTACK':
+      default:
+        return this.paystack;
+    }
+  }
+
+  // For verifying/refunding a *specific* past transaction, where the
+  // gateway that actually processed it (Transaction.gateway) must be used
+  // regardless of what the organization's country maps to today — see the
+  // comment on ParsedWebhookEvent.provider for why forCountry() is wrong for
+  // this case.
+  byName(provider: PaymentProviderName): PaymentProvider {
+    switch (provider) {
+      case 'PAWAPAY':
+        return this.pawapay;
       case 'PAYSTACK':
       default:
         return this.paystack;

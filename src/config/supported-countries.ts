@@ -5,10 +5,13 @@
 // resolve provider/currency/charge-shape through this table instead of a
 // hardcoded switch. See prisma/schema.prisma's Organization/User.country
 // comment for how this replaced the old OrganizationCountry enum.
-export type PaymentProviderName = 'PAYSTACK' | 'PAWAPAY' | 'STRIPE';
+export type PaymentProviderName = 'PAYSTACK' | 'PAWAPAY';
 
 // 'REDIRECT': the payer completes payment on the provider's hosted page
-// (Paystack, Stripe) — PaymentsService needs a callbackUrl, nothing else.
+// (historically Paystack) — PaymentsService needs a callbackUrl, nothing
+// else. No current SUPPORTED_COUNTRIES entry uses this shape; kept for
+// historical Paystack-processed data (Transaction.gateway) and in case a
+// future redirect-based provider is added.
 // 'MOBILE_MONEY_PUSH': no hosted page exists — a prompt is pushed directly
 // to the payer's phone (PawaPay), so PaymentsService needs a phone number
 // and network up front instead.
@@ -27,11 +30,17 @@ export interface SupportedCountry {
 // equivalent to the old KENYA/UGANDA values, just as ISO-3166-1 alpha-2
 // codes instead of enum members.
 export const SUPPORTED_COUNTRIES: Record<string, SupportedCountry> = {
+  // Kenya moved from PAYSTACK to PAWAPAY (M-Pesa) — Paystack is fully
+  // retired as a charge/payout rail. PaystackProvider and its Prisma fields
+  // stay wired up read-only, purely for verifying/refunding transactions
+  // that were already processed through it before this cutover (see
+  // Transaction.gateway, PaymentProviderRegistry.byName()) — no new charge
+  // or payout ever routes through it again.
   KE: {
     label: 'Kenya',
     currency: 'KES',
-    provider: 'PAYSTACK',
-    chargeShape: 'REDIRECT',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
   UG: {
     label: 'Uganda',
@@ -40,276 +49,118 @@ export const SUPPORTED_COUNTRIES: Record<string, SupportedCountry> = {
     chargeShape: 'MOBILE_MONEY_PUSH',
   },
 
-  // Every other Stripe-supported country (per stripe.com/global, checked
-  // 2026-09) — donor charging (StripeProvider) and payout onboarding
-  // (StripeConnectModule) both already work generically for any STRIPE
-  // entry here, so adding one is exactly this: label + currency, nothing
-  // else. Kenya deliberately stays PAYSTACK above, not STRIPE — Stripe
-  // itself only reaches Kenya through its Paystack acquisition, the same
-  // rail this app already uses directly.
-  AU: {
-    label: 'Australia',
-    currency: 'AUD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  // Every other PawaPay-supported African country (per docs.pawapay.io/v2/
+  // docs/providers, checked 2026-09) — mobile-money collection/payout via
+  // PawaPayProvider already works generically for any of these, same as
+  // Kenya/Uganda above; adding one is exactly this: label + currency,
+  // nothing else.
+  GH: {
+    label: 'Ghana',
+    currency: 'GHS',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  AT: {
-    label: 'Austria',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  TZ: {
+    label: 'Tanzania',
+    currency: 'TZS',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  BE: {
-    label: 'Belgium',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  RW: {
+    label: 'Rwanda',
+    currency: 'RWF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  BR: {
-    label: 'Brazil',
-    currency: 'BRL',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  ZM: {
+    label: 'Zambia',
+    currency: 'ZMW',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  BG: {
-    label: 'Bulgaria',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  MW: {
+    label: 'Malawi',
+    currency: 'MWK',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  CA: {
-    label: 'Canada',
-    currency: 'CAD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  NG: {
+    label: 'Nigeria',
+    currency: 'NGN',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  HR: {
-    label: 'Croatia',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  CM: {
+    label: 'Cameroon',
+    currency: 'XAF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  CY: {
-    label: 'Cyprus',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  CI: {
+    label: "Côte d'Ivoire",
+    currency: 'XOF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  CZ: {
-    label: 'Czech Republic',
-    currency: 'CZK',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  SN: {
+    label: 'Senegal',
+    currency: 'XOF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  DK: {
-    label: 'Denmark',
-    currency: 'DKK',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  BJ: {
+    label: 'Benin',
+    currency: 'XOF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  EE: {
-    label: 'Estonia',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  BF: {
+    label: 'Burkina Faso',
+    currency: 'XOF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  FI: {
-    label: 'Finland',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  CG: {
+    label: 'Republic of the Congo',
+    currency: 'XAF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  FR: {
-    label: 'France',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  CD: {
+    label: 'DR Congo',
+    currency: 'CDF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  DE: {
-    label: 'Germany',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  GA: {
+    label: 'Gabon',
+    currency: 'XAF',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  GI: {
-    label: 'Gibraltar',
-    currency: 'GIP',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  SL: {
+    label: 'Sierra Leone',
+    currency: 'SLE',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  GR: {
-    label: 'Greece',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  LS: {
+    label: 'Lesotho',
+    currency: 'LSL',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  HK: {
-    label: 'Hong Kong',
-    currency: 'HKD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  MZ: {
+    label: 'Mozambique',
+    currency: 'MZN',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
-  HU: {
-    label: 'Hungary',
-    currency: 'HUF',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  IE: {
-    label: 'Ireland',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  IT: {
-    label: 'Italy',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  JP: {
-    label: 'Japan',
-    currency: 'JPY',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  LV: {
-    label: 'Latvia',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  LI: {
-    label: 'Liechtenstein',
-    currency: 'CHF',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  LT: {
-    label: 'Lithuania',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  LU: {
-    label: 'Luxembourg',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  MY: {
-    label: 'Malaysia',
-    currency: 'MYR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  MT: {
-    label: 'Malta',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  MX: {
-    label: 'Mexico',
-    currency: 'MXN',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  NL: {
-    label: 'Netherlands',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  NZ: {
-    label: 'New Zealand',
-    currency: 'NZD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  NO: {
-    label: 'Norway',
-    currency: 'NOK',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  PL: {
-    label: 'Poland',
-    currency: 'PLN',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  PT: {
-    label: 'Portugal',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  RO: {
-    label: 'Romania',
-    currency: 'RON',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  SG: {
-    label: 'Singapore',
-    currency: 'SGD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  SK: {
-    label: 'Slovakia',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  SI: {
-    label: 'Slovenia',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  ES: {
-    label: 'Spain',
-    currency: 'EUR',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  SE: {
-    label: 'Sweden',
-    currency: 'SEK',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  CH: {
-    label: 'Switzerland',
-    currency: 'CHF',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  TH: {
-    label: 'Thailand',
-    currency: 'THB',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  AE: {
-    label: 'United Arab Emirates',
-    currency: 'AED',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  GB: {
-    label: 'United Kingdom',
-    currency: 'GBP',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
-  },
-  US: {
-    label: 'United States',
-    currency: 'USD',
-    provider: 'STRIPE',
-    chargeShape: 'REDIRECT',
+  ET: {
+    label: 'Ethiopia',
+    currency: 'ETB',
+    provider: 'PAWAPAY',
+    chargeShape: 'MOBILE_MONEY_PUSH',
   },
 };
 

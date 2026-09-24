@@ -2,6 +2,7 @@ import type {
   PaymentRail,
   TransactionStatus,
 } from '../../../../generated/prisma/enums';
+import type { PaymentProviderName } from '../../../config/supported-countries';
 
 // The channels a payer can be offered at Paystack's hosted checkout. When the
 // payer has already picked one on our own pay page (for clarity — "Pay with
@@ -11,12 +12,112 @@ import type {
 export const PAYMENT_METHODS = ['card', 'mobile_money'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-// Uganda mobile money operators, as PawaPay identifies them.
-export const MOBILE_MONEY_PROVIDERS = [
-  'MTN_MOMO_UGA',
-  'AIRTEL_OAPI_UGA',
-] as const;
-export type MobileMoneyProvider = (typeof MOBILE_MONEY_PROVIDERS)[number];
+// Every mobile-network operator PawaPay identifies, across every
+// PawaPay-backed country in SUPPORTED_COUNTRIES — confirmed against
+// PawaPay's own docs (docs.pawapay.io/v2/docs/providers). Grouped per
+// country below (MOBILE_MONEY_PROVIDERS_BY_COUNTRY) for validating that a
+// submitted operator actually belongs to the country being charged; this
+// flat list exists for call sites (DTO @IsIn checks) that only need "is this
+// a recognized operator code at all," not which country it belongs to.
+export const MOBILE_MONEY_PROVIDERS_BY_COUNTRY = {
+  KE: [{ code: 'MPESA_KEN', label: 'M-Pesa' }],
+  UG: [
+    { code: 'MTN_MOMO_UGA', label: 'MTN Mobile Money' },
+    { code: 'AIRTEL_OAPI_UGA', label: 'Airtel Money' },
+  ],
+  GH: [
+    { code: 'MTN_MOMO_GHA', label: 'MTN Mobile Money' },
+    { code: 'AIRTELTIGO_GHA', label: 'AirtelTigo Money' },
+    { code: 'VODAFONE_GHA', label: 'Vodafone Cash' },
+  ],
+  TZ: [
+    { code: 'AIRTEL_TZA', label: 'Airtel Money' },
+    { code: 'VODACOM_TZA', label: 'Vodacom M-Pesa' },
+    { code: 'TIGO_TZA', label: 'Tigo Pesa' },
+    { code: 'HALOTEL_TZA', label: 'Halotel Money' },
+  ],
+  RW: [
+    { code: 'AIRTEL_RWA', label: 'Airtel Money' },
+    { code: 'MTN_MOMO_RWA', label: 'MTN Mobile Money' },
+  ],
+  ZM: [
+    { code: 'AIRTEL_OAPI_ZMB', label: 'Airtel Money' },
+    { code: 'MTN_MOMO_ZMB', label: 'MTN Mobile Money' },
+    { code: 'ZAMTEL_ZMB', label: 'Zamtel Money' },
+  ],
+  MW: [
+    { code: 'AIRTEL_MWI', label: 'Airtel Money' },
+    { code: 'TNM_MWI', label: 'TNM Mpamba' },
+  ],
+  NG: [
+    { code: 'AIRTEL_NGA', label: 'Airtel Money' },
+    { code: 'MTN_MOMO_NGA', label: 'MTN Mobile Money' },
+  ],
+  CM: [
+    { code: 'MTN_MOMO_CMR', label: 'MTN Mobile Money' },
+    { code: 'ORANGE_CMR', label: 'Orange Money' },
+  ],
+  CI: [
+    { code: 'MTN_MOMO_CIV', label: 'MTN Mobile Money' },
+    { code: 'ORANGE_CIV', label: 'Orange Money' },
+    { code: 'WAVE_CIV', label: 'Wave' },
+  ],
+  SN: [
+    { code: 'FREE_SEN', label: 'Free Money' },
+    { code: 'ORANGE_SEN', label: 'Orange Money' },
+    { code: 'WAVE_SEN', label: 'Wave' },
+  ],
+  BJ: [
+    { code: 'MTN_MOMO_BEN', label: 'MTN Mobile Money' },
+    { code: 'MOOV_BEN', label: 'Moov Money' },
+  ],
+  BF: [
+    { code: 'MOOV_BFA', label: 'Moov Money' },
+    { code: 'ORANGE_BFA', label: 'Orange Money' },
+  ],
+  CG: [
+    { code: 'AIRTEL_COG', label: 'Airtel Money' },
+    { code: 'MTN_MOMO_COG', label: 'MTN Mobile Money' },
+  ],
+  CD: [
+    { code: 'VODACOM_MPESA_COD', label: 'Vodacom M-Pesa' },
+    { code: 'AIRTEL_COD', label: 'Airtel Money' },
+    { code: 'ORANGE_COD', label: 'Orange Money' },
+  ],
+  GA: [{ code: 'AIRTEL_GAB', label: 'Airtel Money' }],
+  SL: [{ code: 'ORANGE_SLE', label: 'Orange Money' }],
+  LS: [{ code: 'MPESA_LSO', label: 'M-Pesa' }],
+  MZ: [
+    { code: 'MOVITEL_MOZ', label: 'Movitel' },
+    { code: 'VODACOM_MOZ', label: 'Vodacom M-Pesa' },
+  ],
+  ET: [{ code: 'MPESA_ETH', label: 'M-Pesa' }],
+} as const;
+
+type CountryOperators =
+  (typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY)[keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY][number];
+export type MobileMoneyProvider = CountryOperators['code'];
+
+export const MOBILE_MONEY_PROVIDERS = Object.values(
+  MOBILE_MONEY_PROVIDERS_BY_COUNTRY,
+).flatMap((operators) => operators.map((operator) => operator.code));
+
+// Beyond "is this a recognized code at all" (MOBILE_MONEY_PROVIDERS), this
+// confirms the operator actually belongs to the country being charged — e.g.
+// rejects an MTN Ghana code submitted for a Uganda event — with a clear
+// error instead of letting PawaPay's own API reject the mismatch deep in a
+// gateway call.
+export function isMobileMoneyProviderForCountry(
+  countryCode: string,
+  value: string | undefined,
+): value is MobileMoneyProvider {
+  if (!value) return false;
+  const operators =
+    MOBILE_MONEY_PROVIDERS_BY_COUNTRY[
+      countryCode as keyof typeof MOBILE_MONEY_PROVIDERS_BY_COUNTRY
+    ];
+  return (operators ?? []).some((operator) => operator.code === value);
+}
 
 export interface InitializeChargeParams {
   email: string;
@@ -76,6 +177,28 @@ export interface ParsedWebhookEvent {
   personalInvoiceId?: string;
   /** The platform's cut, included in amountSettled — subtract before crediting. */
   platformFeeAmount?: number;
+  /**
+   * Which gateway produced this event — set by each provider's own
+   * parseWebhookEvent(), not re-derived from the organization's country.
+   * An org's country can map to a different provider than the one that
+   * actually processed a given historical transaction (a provider cutover,
+   * or a one-off charge routed to a different provider than usual), so
+   * verifying/refunding a specific transaction must key off this persisted
+   * value (Transaction.gateway) rather than re-deriving from country at
+   * verify/refund time. See PaymentProviderRegistry.byName().
+   */
+  provider: PaymentProviderName;
+  /**
+   * ISO 4217 code of the currency actually charged — set by each provider
+   * from the real charge/session data, not assumed from the event's own
+   * currency. Almost always equal to the event's currency, except a card
+   * fallback charged in a different currency than the event's own (e.g. a
+   * USD diaspora contribution to a UGX event) — that mismatch is what tags
+   * a transaction as a secondary-currency contribution everywhere it's
+   * queried, so this must reflect the real charge, not be copied from the
+   * event.
+   */
+  currency: string;
 }
 
 export interface VerifiedTransaction {
@@ -87,7 +210,6 @@ export interface VerifiedTransaction {
 
 export const PAYSTACK_PROVIDER = Symbol('PAYSTACK_PROVIDER');
 export const PAWAPAY_PROVIDER = Symbol('PAWAPAY_PROVIDER');
-export const STRIPE_PROVIDER = Symbol('STRIPE_PROVIDER');
 
 // Shared across every payment provider — charging and confirming a charge.
 // Payout/bank concerns live in BankPayoutProvider below since PawaPay (or any
