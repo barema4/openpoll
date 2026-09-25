@@ -1,16 +1,11 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  PAYSTACK_PROVIDER,
-  isMobileMoneyProviderForCountry,
-  type BankPayoutProvider,
-} from '../payments/providers/payment-provider.interface';
+import { isMobileMoneyProviderForCountry } from '../payments/providers/payment-provider.interface';
 import {
   DisbursementStatus,
   VendorPayoutMethod,
 } from '../../../generated/prisma/enums';
 import { resolveOwnerOrganizationIds } from '../../common/agency-link.util';
-import { getSupportedCountry } from '../../config/supported-countries';
 import type { CreateVendorDto } from './dto/create-vendor.dto';
 
 // Fields safe to return to the client — never the raw payoutAccountNumber/
@@ -36,43 +31,18 @@ const SAFE_SELECT = {
 
 @Injectable()
 export class VendorsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(PAYSTACK_PROVIDER) private readonly paystack: BankPayoutProvider,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  // Verify-then-persist for a bank account — same order as
-  // PayoutsService.onboard(), but no subaccount is created: a vendor is an
-  // outbound-transfer destination, not a charge-routing target, so there's
-  // nothing to route incoming charges to.
+  // Bank-account vendor payouts were retired alongside Paystack itself — no
+  // country's provider can resolve/pay one any more (see
+  // DisbursementsService.reserveDisbursement's isPawaPayMobileMoney gate).
+  // The fields/enum member still exist to correctly display vendors created
+  // before that cutover; new ones can only ever be mobile money.
   async create(dto: CreateVendorDto) {
     if (dto.payoutMethod === VendorPayoutMethod.BANK_ACCOUNT) {
-      const bankOrg = await this.prisma.organization.findUniqueOrThrow({
-        where: { id: dto.organizationId },
-        select: { country: true },
-      });
-      if (getSupportedCountry(bankOrg.country).provider !== 'PAYSTACK') {
-        throw new BadRequestException(
-          'Bank-account vendor payouts are only available for organizations on the Paystack payout rail',
-        );
-      }
-      const resolved = await this.paystack.resolveAccountNumber(
-        dto.accountNumber!,
-        dto.bankCode!,
+      throw new BadRequestException(
+        'Bank-account vendor payouts are no longer supported — use a mobile money payout instead',
       );
-      return this.prisma.vendor.create({
-        data: {
-          organizationId: dto.organizationId,
-          name: dto.name,
-          payoutMethod: VendorPayoutMethod.BANK_ACCOUNT,
-          payoutBankCode: dto.bankCode,
-          payoutBankName: dto.bankName,
-          payoutAccountNumber: dto.accountNumber,
-          payoutAccountName: resolved.accountName,
-          payoutAccountLast4: dto.accountNumber!.slice(-4),
-        },
-        select: SAFE_SELECT,
-      });
     }
 
     const organization = await this.prisma.organization.findUniqueOrThrow({

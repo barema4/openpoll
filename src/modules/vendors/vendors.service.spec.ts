@@ -2,19 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { VendorPayoutMethod } from '../../../generated/prisma/enums';
 import type { PrismaService } from '../../prisma/prisma.service';
-import type { BankPayoutProvider } from '../payments/providers/payment-provider.interface';
 
 describe('VendorsService.create', () => {
   it('rejects bank-account vendor creation now that Paystack is retired', async () => {
-    const resolveAccountNumber = jest.fn();
-    const paystack = { resolveAccountNumber } as unknown as BankPayoutProvider;
     const create = jest.fn();
-    const findUniqueOrThrow = jest.fn().mockResolvedValue({ country: 'KE' });
-    const prisma = {
-      vendor: { create },
-      organization: { findUniqueOrThrow },
-    } as unknown as PrismaService;
-    const service = new VendorsService(prisma, paystack);
+    const prisma = { vendor: { create } } as unknown as PrismaService;
+    const service = new VendorsService(prisma);
 
     await expect(
       service.create({
@@ -26,20 +19,17 @@ describe('VendorsService.create', () => {
         accountNumber: '0123456789',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(resolveAccountNumber).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 
   it('saves a mobile money vendor without any resolve step', async () => {
-    const resolveAccountNumber = jest.fn();
-    const paystack = { resolveAccountNumber } as unknown as BankPayoutProvider;
     const create = jest.fn().mockResolvedValue({ id: 'vendor-1' });
     const findUniqueOrThrow = jest.fn().mockResolvedValue({ country: 'UG' });
     const prisma = {
       vendor: { create },
       organization: { findUniqueOrThrow },
     } as unknown as PrismaService;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     await service.create({
       organizationId: 'org-1',
@@ -49,7 +39,6 @@ describe('VendorsService.create', () => {
       mobileNumber: '256771234567',
     });
 
-    expect(resolveAccountNumber).not.toHaveBeenCalled();
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -65,14 +54,13 @@ describe('VendorsService.create', () => {
   });
 
   it('never selects raw account/phone numbers back from the database', async () => {
-    const paystack = {} as unknown as BankPayoutProvider;
     const create = jest.fn().mockResolvedValue({ id: 'vendor-1' });
     const findUniqueOrThrow = jest.fn().mockResolvedValue({ country: 'UG' });
     const prisma = {
       vendor: { create },
       organization: { findUniqueOrThrow },
     } as unknown as PrismaService;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     await service.create({
       organizationId: 'org-1',
@@ -98,8 +86,7 @@ describe('VendorsService.listForOrganization', () => {
       vendor: { findMany },
       agencyClientLink: { findUnique: findUniqueAgencyLink },
     } as unknown as PrismaService;
-    const paystack = {} as unknown as BankPayoutProvider;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     const result = await service.listForOrganization('org-1');
 
@@ -126,8 +113,7 @@ describe('VendorsService.listForOrganization', () => {
       vendor: { findMany },
       agencyClientLink: { findUnique: findUniqueAgencyLink },
     } as unknown as PrismaService;
-    const paystack = {} as unknown as BankPayoutProvider;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     await service.listForOrganization('client-org-1');
 
@@ -152,8 +138,7 @@ describe('VendorsService.remove', () => {
       vendor: { delete: deleteFn },
       disbursement: { count },
     } as unknown as PrismaService;
-    const paystack = {} as unknown as BankPayoutProvider;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     const result = await service.remove('vendor-1');
 
@@ -178,8 +163,7 @@ describe('VendorsService.remove', () => {
       vendor: { delete: deleteFn },
       disbursement: { count },
     } as unknown as PrismaService;
-    const paystack = {} as unknown as BankPayoutProvider;
-    const service = new VendorsService(prisma, paystack);
+    const service = new VendorsService(prisma);
 
     await expect(service.remove('vendor-1')).rejects.toBeInstanceOf(
       BadRequestException,

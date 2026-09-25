@@ -594,11 +594,10 @@ model Vendor {
 }
 
 // ---------------------------------------------------------------------------
-// Disbursements — VENDOR_PAYOUT is now live (Uganda/PawaPay only in this
-// phase; a Kenya vendor's "Pay" action is rejected until the Paystack
-// Transfer integration lands). ORGANIZER_WITHDRAWAL remains unused —
-// Withdrawal is its own, already-shipped flow; unifying the two is out of
-// scope here.
+// Disbursements — VENDOR_PAYOUT is live for every country, all PawaPay
+// mobile-money (Paystack bank-account vendor payouts were retired alongside
+// Paystack itself). ORGANIZER_WITHDRAWAL remains unused — Withdrawal is its
+// own, already-shipped flow; unifying the two is out of scope here.
 // ---------------------------------------------------------------------------
 
 enum DisbursementTransferType {
