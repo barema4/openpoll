@@ -237,6 +237,55 @@ describe('AuthService.register with an invite token', () => {
   });
 });
 
+describe('AuthService.register with a country', () => {
+  it("passes the frontend's detected country through to the new user", async () => {
+    const create = jest.fn().mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      name: 'Jane',
+    });
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue(null), create },
+    };
+    const { service } = buildService(prisma);
+
+    await service.register({
+      email: 'jane@example.com',
+      password: 'password123',
+      name: 'Jane',
+      country: 'UG',
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ country: 'UG' }),
+      }),
+    );
+  });
+
+  it('omits country when not provided, leaving the schema default (Kenya) to apply', async () => {
+    const create = jest.fn().mockResolvedValue({
+      id: 'user-1',
+      email: 'jane@example.com',
+      name: 'Jane',
+    });
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue(null), create },
+    };
+    const { service } = buildService(prisma);
+
+    await service.register({
+      email: 'jane@example.com',
+      password: 'password123',
+      name: 'Jane',
+    });
+
+    const data = (create.mock.calls[0][0] as { data: Record<string, unknown> })
+      .data;
+    expect(data).not.toHaveProperty('country');
+  });
+});
+
 describe('AuthService.register with a staff invite token', () => {
   it('accepts a pending staff invitation whose email matches, granting STAFF and reflecting it immediately', async () => {
     const transaction = jest.fn().mockResolvedValue(undefined);

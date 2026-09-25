@@ -65,7 +65,12 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     const user = await this.prisma.user.create({
-      data: { email: dto.email, passwordHash, name: dto.name },
+      data: {
+        email: dto.email,
+        passwordHash,
+        name: dto.name,
+        ...(dto.country ? { country: dto.country } : {}),
+      },
     });
 
     await this.audit.record({ userId: user.id, action: 'USER_REGISTERED' });
