@@ -25,7 +25,9 @@ import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
 import type { SetBrandingDto } from './dto/set-branding.dto';
+import type { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { maskPhone } from '../payouts/mask-phone.util';
+import { paginate } from '../../common/pagination.util';
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -215,7 +217,14 @@ export class OrganizationsService {
   // A client org the caller has BOTH a direct membership in AND an agency
   // grant for shouldn't happen in practice (agency-created clients start
   // with only the grant), but if it ever does, the direct membership wins.
-  async listForUser(userId: string) {
+  //
+  // Search/pagination/archive-filtering happen in application code, after
+  // the union+dedupe, rather than pushing them into the two Prisma queries —
+  // a user's own organization count is small (tens, not thousands), so this
+  // stays fast while avoiding the complexity of paginating a heterogeneous
+  // two-source union at the DB level.
+  async listForUser(userId: string, query: ListOrganizationsQueryDto = {}) {
+    const { page = 1, pageSize = 10, search, includeArchived } = query;
     const [memberships, agencyGrants] = await Promise.all([
       this.prisma.organizationMembership.findMany({
         where: { userId },
@@ -245,7 +254,36 @@ export class OrganizationsService {
         managedViaAgency: grant.agencyOrganization,
       }));
 
-    return [...direct, ...viaAgency];
+    let combined = [...direct, ...viaAgency];
+    if (!includeArchived) {
+      combined = combined.filter((org) => !org.archivedAt);
+    }
+    if (search) {
+      const term = search.toLowerCase();
+      combined = combined.filter((org) =>
+        org.name.toLowerCase().includes(term),
+      );
+    }
+
+    const total = combined.length;
+    const start = (page - 1) * pageSize;
+    const data = combined.slice(start, start + pageSize);
+    return paginate(data, total, page, pageSize);
+  }
+
+  async setArchived(userId: string, organizationId: string, archived: boolean) {
+    const updated = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { archivedAt: archived ? new Date() : null },
+    });
+
+    await this.audit.record({
+      userId,
+      action: archived ? 'ORGANIZATION_ARCHIVED' : 'ORGANIZATION_UNARCHIVED',
+      payload: { organizationId },
+    });
+
+    return maskPhone(updated);
   }
 
   listMembers(organizationId: string) {

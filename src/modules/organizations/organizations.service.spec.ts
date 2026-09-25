@@ -39,7 +39,7 @@ describe('OrganizationsService.listForUser', () => {
 
     const result = await service.listForUser('user-1');
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       {
         id: 'org-1',
         name: 'Grace Chapel',
@@ -55,12 +55,13 @@ describe('OrganizationsService.listForUser', () => {
         payoutMobileNumberLast4: null,
       },
     ]);
+    expect(result.total).toBe(2);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: 'user-1' } }),
     );
   });
 
-  it('returns an empty array for a user with no memberships', async () => {
+  it('returns an empty page for a user with no memberships', async () => {
     const prisma = {
       organizationMembership: { findMany: jest.fn().mockResolvedValue([]) },
       agencyClientAccess: { findMany: jest.fn().mockResolvedValue([]) },
@@ -73,7 +74,110 @@ describe('OrganizationsService.listForUser', () => {
       email,
     );
 
-    expect(await service.listForUser('user-2')).toEqual([]);
+    const result = await service.listForUser('user-2');
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+
+  it('excludes archived organizations by default, and includes them when includeArchived is set', async () => {
+    const memberships = [
+      {
+        role: OrgRole.MAIN_ORGANIZER,
+        organizationId: 'org-1',
+        organization: { id: 'org-1', name: 'Active Org', archivedAt: null },
+      },
+      {
+        role: OrgRole.MAIN_ORGANIZER,
+        organizationId: 'org-2',
+        organization: {
+          id: 'org-2',
+          name: 'Old Org',
+          archivedAt: new Date('2026-01-01'),
+        },
+      },
+    ];
+    const prisma = {
+      organizationMembership: {
+        findMany: jest.fn().mockResolvedValue(memberships),
+      },
+      agencyClientAccess: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const defaultResult = await service.listForUser('user-1');
+    expect(defaultResult.data.map((o) => o.id)).toEqual(['org-1']);
+
+    const withArchived = await service.listForUser('user-1', {
+      includeArchived: true,
+    });
+    expect(withArchived.data.map((o) => o.id)).toEqual(['org-1', 'org-2']);
+  });
+
+  it('filters by search term (case-insensitive, matches name)', async () => {
+    const memberships = [
+      {
+        role: OrgRole.MAIN_ORGANIZER,
+        organizationId: 'org-1',
+        organization: { id: 'org-1', name: 'Grace Chapel', archivedAt: null },
+      },
+      {
+        role: OrgRole.MAIN_ORGANIZER,
+        organizationId: 'org-2',
+        organization: { id: 'org-2', name: 'Family Chama', archivedAt: null },
+      },
+    ];
+    const prisma = {
+      organizationMembership: {
+        findMany: jest.fn().mockResolvedValue(memberships),
+      },
+      agencyClientAccess: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.listForUser('user-1', { search: 'grace' });
+    expect(result.data.map((o) => o.id)).toEqual(['org-1']);
+    expect(result.total).toBe(1);
+  });
+
+  it('paginates the combined result set', async () => {
+    const memberships = Array.from({ length: 3 }, (_, i) => ({
+      role: OrgRole.MAIN_ORGANIZER,
+      organizationId: `org-${i}`,
+      organization: { id: `org-${i}`, name: `Org ${i}`, archivedAt: null },
+    }));
+    const prisma = {
+      organizationMembership: {
+        findMany: jest.fn().mockResolvedValue(memberships),
+      },
+      agencyClientAccess: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.listForUser('user-1', {
+      page: 2,
+      pageSize: 2,
+    });
+    expect(result.data.map((o) => o.id)).toEqual(['org-2']);
+    expect(result.total).toBe(3);
+    expect(result.totalPages).toBe(2);
   });
 
   it('appends client orgs granted via AgencyClientAccess, tagged with managedViaAgency', async () => {
@@ -100,7 +204,7 @@ describe('OrganizationsService.listForUser', () => {
 
     const result = await service.listForUser('user-1');
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       {
         id: 'client-org-1',
         name: 'Client Co',
@@ -143,7 +247,7 @@ describe('OrganizationsService.listForUser', () => {
 
     const result = await service.listForUser('user-1');
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       {
         id: 'org-1',
         name: 'Org One',
@@ -151,6 +255,66 @@ describe('OrganizationsService.listForUser', () => {
         payoutMobileNumberLast4: null,
       },
     ]);
+  });
+});
+
+describe('OrganizationsService.setArchived', () => {
+  const auditRecord = jest.fn();
+  const audit = { record: auditRecord } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
+  const config = {} as unknown as ConfigService;
+  const email = { send: jest.fn() } as unknown as EmailService;
+
+  it('sets archivedAt and records an audit entry when archiving', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'org-1',
+      archivedAt: new Date('2026-09-25'),
+    });
+    const prisma = { organization: { update } } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.setArchived('user-1', 'org-1', true);
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'org-1' },
+        data: { archivedAt: expect.any(Date) },
+      }),
+    );
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ORGANIZATION_ARCHIVED' }),
+    );
+    expect(result).toMatchObject({ id: 'org-1' });
+  });
+
+  it('clears archivedAt and records an audit entry when unarchiving', async () => {
+    const update = jest
+      .fn()
+      .mockResolvedValue({ id: 'org-1', archivedAt: null });
+    const prisma = { organization: { update } } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    await service.setArchived('user-1', 'org-1', false);
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'org-1' },
+      data: { archivedAt: null },
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ORGANIZATION_UNARCHIVED' }),
+    );
   });
 });
 

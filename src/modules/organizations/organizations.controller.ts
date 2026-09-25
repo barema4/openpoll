@@ -15,6 +15,8 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
 import { SetBrandingDto } from './dto/set-branding.dto';
+import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
+import { SetArchivedDto } from './dto/set-archived.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OrgRolesGuard } from '../../common/guards/org-roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -45,8 +47,11 @@ export class OrganizationsController {
   // Self-scoped — no @Roles(), so OrgRolesGuard no-ops and this simply
   // returns whatever organizations the caller is themselves a member of.
   @Get()
-  listMine(@CurrentUser() user: AuthenticatedUser) {
-    return this.organizationsService.listForUser(user.id);
+  listMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListOrganizationsQueryDto,
+  ) {
+    return this.organizationsService.listForUser(user.id, query);
   }
 
   @Roles(OrgRole.MAIN_ORGANIZER, OrgRole.TREASURER, OrgRole.AUDITOR)
@@ -101,6 +106,20 @@ export class OrganizationsController {
       user.id,
       organizationId,
       dto,
+    );
+  }
+
+  @Roles(OrgRole.MAIN_ORGANIZER)
+  @Patch(':organizationId/archive')
+  setArchived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('organizationId') organizationId: string,
+    @Body() dto: SetArchivedDto,
+  ) {
+    return this.organizationsService.setArchived(
+      user.id,
+      organizationId,
+      dto.archived,
     );
   }
 

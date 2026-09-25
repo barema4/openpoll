@@ -134,6 +134,10 @@ model Organization {
   // in this app.
   logoUrl              String?             @map("logo_url")
   createdAt            DateTime            @default(now()) @map("created_at")
+  // Soft-archive only — never hard-deleted, since events/transactions/audit
+  // history must stay intact and reachable by id. Excluded from
+  // listForUser() by default; set/cleared via PATCH /organizations/:id/archive.
+  archivedAt           DateTime?           @map("archived_at")
 
   // Agency plan — gates linking more than one client org via
   // AgencyClientLink; the first client is always free. No self-serve
