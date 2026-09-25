@@ -17,6 +17,7 @@ import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-in
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { TransactionsService } from '../transactions/transactions.service';
+import { PlatformPayoutsService } from '../platform-payouts/platform-payouts.service';
 import {
   DisbursementStatus,
   WithdrawalStatus,
@@ -42,6 +43,7 @@ export class PawaPayWebhookController {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly transactions: TransactionsService,
+    private readonly platformPayouts: PlatformPayoutsService,
     @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
     @InjectQueue(PERSONAL_INVOICE_WEBHOOK_QUEUE)
     private readonly personalInvoiceWebhookQueue: Queue,
@@ -88,9 +90,10 @@ export class PawaPayWebhookController {
     return { received: true };
   }
 
-  // A payoutId belongs to either an organizer withdrawal or a vendor
-  // disbursement — both share this one PawaPay callback URL, distinguished
-  // by which table has a row with this providerReference/gatewayTransferRef.
+  // A payoutId belongs to an organizer withdrawal, a vendor disbursement, or
+  // the platform's own fee withdrawal — all three share this one PawaPay
+  // callback URL, distinguished by which table has a row with this
+  // providerReference/gatewayTransferRef.
   private async handlePayoutCallback(body: PawaPayCallbackBody) {
     const withdrawal = await this.prisma.withdrawal.findUnique({
       where: { providerReference: body.payoutId },
@@ -105,6 +108,17 @@ export class PawaPayWebhookController {
     });
     if (disbursement) {
       await this.completeDisbursement(disbursement, body);
+      return;
+    }
+
+    const platformWithdrawal =
+      await this.platformPayouts.findWithdrawalByReference(body.payoutId!);
+    if (platformWithdrawal) {
+      await this.platformPayouts.completeWithdrawal(
+        platformWithdrawal,
+        body.status === 'COMPLETED',
+        body.failureReason?.failureMessage,
+      );
       return;
     }
     // Unknown/foreign payout — nothing of ours to update.

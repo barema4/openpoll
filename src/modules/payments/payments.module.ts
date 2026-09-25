@@ -22,6 +22,7 @@ import {
 } from './payments.constants';
 import { PERSONAL_INVOICE_WEBHOOK_QUEUE } from '../personal-invoices/personal-invoices.constants';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { PlatformPayoutsModule } from '../platform-payouts/platform-payouts.module';
 
 @Module({
   imports: [
@@ -36,6 +37,9 @@ import { TransactionsModule } from '../transactions/transactions.module';
     // TransactionsService (to complete one once it lands) — a genuine
     // two-way dependency between the two modules.
     forwardRef(() => TransactionsModule),
+    // Same two-way relationship, for the platform's own withdrawal-completion
+    // callback (see PawaPayWebhookController.handlePayoutCallback).
+    forwardRef(() => PlatformPayoutsModule),
   ],
   controllers: [
     CheckoutController,

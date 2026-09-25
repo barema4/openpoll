@@ -16,18 +16,18 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                   String              @id @default(uuid())
-  email                String              @unique
-  passwordHash         String              @map("password_hash")
+  id                   String        @id @default(uuid())
+  email                String        @unique
+  passwordHash         String        @map("password_hash")
   name                 String
   // Paystack subaccount code for this user's own payout destination — lets an
   // individual with no Organization still receive money via personal invoices.
   // Set only via the bank-account onboarding flow (POST /payouts/resolve-account
   // + PATCH /users/me/payout) — never accepted as a raw value from a client.
-  gatewayWalletId      String?             @map("gateway_wallet_id")
-  payoutBankName       String?             @map("payout_bank_name")
-  payoutAccountName    String?             @map("payout_account_name")
-  payoutAccountLast4   String?             @map("payout_account_last4")
+  gatewayWalletId      String?       @map("gateway_wallet_id")
+  payoutBankName       String?       @map("payout_bank_name")
+  payoutAccountName    String?       @map("payout_account_name")
+  payoutAccountLast4   String?       @map("payout_account_last4")
   // ISO-3166-1 alpha-2 country code (e.g. "KE", "UG") — determines which
   // payment provider/currency this user's personal invoices use, via
   // SUPPORTED_COUNTRIES (src/config/supported-countries.ts). Same idea as
@@ -36,27 +36,28 @@ model User {
   // enum (KENYA|UGANDA) until the worldwide payment-layer redesign — a plain
   // string plus a code-level lookup table means a new country is a config
   // entry, not a schema migration.
-  country              String              @default("KE")
-  payoutMobileProvider String?             @map("payout_mobile_provider")
-  payoutMobileNumber   String?             @map("payout_mobile_number")
+  country              String        @default("KE")
+  payoutMobileProvider String?       @map("payout_mobile_provider")
+  payoutMobileNumber   String?       @map("payout_mobile_number")
   // Platform-operator access (reconciliation, staff management) — distinct
   // from OrgRole, which is scoped per-organization. Null means a regular
   // user with no admin access at all. See resolve-effective-platform-role.ts
   // for the operator-email bootstrap fallback layered on top of this.
-  platformRole         PlatformRole?       @map("platform_role")
-  createdAt            DateTime            @default(now()) @map("created_at")
+  platformRole         PlatformRole? @map("platform_role")
+  createdAt            DateTime      @default(now()) @map("created_at")
 
-  memberships          OrganizationMembership[]
-  auditLogs            AuditLog[]
-  personalInvoices     PersonalInvoice[]
-  passwordResetTokens  PasswordResetToken[]
-  sentInvitations      OrganizationInvitation[]
-  sentStaffInvitations PlatformStaffInvitation[]
-  allocations          Allocation[]
-  requestedWithdrawals Withdrawal[]
-  manualTransactions   Transaction[]
-  requestedRefunds     Refund[]
-  agencyClientAccess   AgencyClientAccess[]
+  memberships                  OrganizationMembership[]
+  auditLogs                    AuditLog[]
+  personalInvoices             PersonalInvoice[]
+  passwordResetTokens          PasswordResetToken[]
+  sentInvitations              OrganizationInvitation[]
+  sentStaffInvitations         PlatformStaffInvitation[]
+  allocations                  Allocation[]
+  requestedWithdrawals         Withdrawal[]
+  manualTransactions           Transaction[]
+  requestedRefunds             Refund[]
+  agencyClientAccess           AgencyClientAccess[]
+  requestedPlatformWithdrawals PlatformWithdrawal[]
 
   @@map("users")
 }
@@ -102,7 +103,7 @@ enum OrganizationType {
 }
 
 model Organization {
-  id                   String              @id @default(uuid())
+  id                   String           @id @default(uuid())
   name                 String
   type                 OrganizationType
   // ISO-3166-1 alpha-2 country code — determines which payment
@@ -110,34 +111,34 @@ model Organization {
   // (src/config/supported-countries.ts). Was a closed OrganizationCountry
   // enum (KENYA|UGANDA) until the worldwide payment-layer redesign; see
   // User.country's comment for why this is a plain string now.
-  country              String              @default("KE")
+  country              String           @default("KE")
   // Auto-provisioned the first time a user hits "Quick collection" instead of
   // setting up a real multi-member organization — lets a solo user create an
   // event/link without an org-creation step, while everything downstream
   // (RBAC, payouts) still works exactly as it does for a real organization.
-  isPersonal           Boolean             @default(false) @map("is_personal")
+  isPersonal           Boolean          @default(false) @map("is_personal")
   // Kenya/Paystack payout destination. Set only via the bank-account onboarding
   // flow (PATCH /organizations/:id/payout).
-  gatewayWalletId      String?             @map("gateway_wallet_id")
-  payoutBankName       String?             @map("payout_bank_name")
-  payoutAccountName    String?             @map("payout_account_name")
-  payoutAccountLast4   String?             @map("payout_account_last4")
+  gatewayWalletId      String?          @map("gateway_wallet_id")
+  payoutBankName       String?          @map("payout_bank_name")
+  payoutAccountName    String?          @map("payout_account_name")
+  payoutAccountLast4   String?          @map("payout_account_last4")
   // Uganda/PawaPay payout destination. PawaPay has no subaccount-style opaque
   // token — the raw number must be kept to place a withdrawal payout later.
   // Set only via PATCH /organizations/:id/payout-mobile-money; always masked
   // to the last 4 digits in API responses.
-  payoutMobileProvider String?             @map("payout_mobile_provider")
-  payoutMobileNumber   String?             @map("payout_mobile_number")
+  payoutMobileProvider String?          @map("payout_mobile_provider")
+  payoutMobileNumber   String?          @map("payout_mobile_number")
   // Shown instead of the platform's own badge on public checkout pages
   // (pay/pledge) — set only via PATCH /organizations/:id/branding. A plain
   // URL, same convention as Event.coverImageUrl — no upload pipeline exists
   // in this app.
-  logoUrl              String?             @map("logo_url")
-  createdAt            DateTime            @default(now()) @map("created_at")
+  logoUrl              String?          @map("logo_url")
+  createdAt            DateTime         @default(now()) @map("created_at")
   // Soft-archive only — never hard-deleted, since events/transactions/audit
   // history must stay intact and reachable by id. Excluded from
   // listForUser() by default; set/cleared via PATCH /organizations/:id/archive.
-  archivedAt           DateTime?           @map("archived_at")
+  archivedAt           DateTime?        @map("archived_at")
 
   // Agency plan — gates linking more than one client org via
   // AgencyClientLink; the first client is always free. No self-serve
@@ -830,4 +831,42 @@ model Withdrawal {
   requestedBy  User         @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
 
   @@map("withdrawals")
+}
+
+// Where the platform's own accumulated fee revenue gets paid out to, one row
+// per PawaPay country — the same shape as Organization's mobile money payout
+// fields, since a payout destination is fundamentally the same thing
+// (PawaPay ties a phone number to one country's network; see
+// docs.pawapay.io/v2/docs/payouts). Set only via
+// PlatformPayoutsService.setDestination, staff-only.
+model PlatformPayoutDestination {
+  countryCode          String   @id @map("country_code")
+  payoutMobileProvider String   @map("payout_mobile_provider")
+  payoutMobileNumber   String   @map("payout_mobile_number")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_payout_destinations")
+}
+
+// The platform's own withdrawal of its accumulated fee revenue out of a
+// PawaPay country's shared wallet — same shape and lifecycle as Withdrawal,
+// just scoped by countryCode instead of organizationId, since the fee
+// balance isn't owned by any one organization. See
+// PlatformPayoutsService.getBalance for how the withdrawable amount is
+// computed, and PawaPayWebhookController for how this completes.
+model PlatformWithdrawal {
+  id                String           @id @default(uuid())
+  countryCode       String           @map("country_code")
+  amount            Decimal          @db.Decimal(14, 2)
+  status            WithdrawalStatus @default(PENDING)
+  providerReference String?          @unique @map("provider_reference")
+  requestedByUserId String           @map("requested_by_user_id")
+  failureReason     String?          @map("failure_reason")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  completedAt       DateTime?        @map("completed_at")
+
+  requestedBy User @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("platform_withdrawals")
 }

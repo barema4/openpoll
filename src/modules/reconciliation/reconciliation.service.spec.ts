@@ -7,6 +7,7 @@ interface CountryFigures {
   withdrawn?: number | null;
   disbursed?: number | null;
   fees?: number | null;
+  platformWithdrawn?: number | null;
 }
 
 // check() runs one checkPawaPayCountry() per PawaPay-backed country (~20
@@ -45,10 +46,19 @@ function makePrisma(figuresByCountry: Record<string, CountryFigures>) {
       });
     },
   );
+  const platformWithdrawalAggregate = jest.fn(
+    (args: { where: { countryCode?: string } }) => {
+      const country = args.where.countryCode ?? '';
+      return Promise.resolve({
+        _sum: { amount: figuresByCountry[country]?.platformWithdrawn ?? null },
+      });
+    },
+  );
   return {
     transaction: { aggregate: transactionAggregate },
     withdrawal: { aggregate: withdrawalAggregate },
     disbursement: { aggregate: disbursementAggregate },
+    platformWithdrawal: { aggregate: platformWithdrawalAggregate },
   } as unknown as PrismaService;
 }
 
@@ -154,6 +164,33 @@ describe('ReconciliationService', () => {
     const uganda = report.pawapay.find((c) => c.countryCode === 'UG')!;
 
     expect(uganda.expectedTotal).toBe(0);
+    expect(uganda.drift).toBe(0);
+  });
+
+  it('subtracts already-withdrawn platform fees from what is still expected in the wallet', async () => {
+    const prisma = makePrisma({
+      UG: {
+        received: 10000,
+        withdrawn: 3000,
+        fees: 150,
+        platformWithdrawn: 100,
+      },
+    });
+    const { pawapay } = makeProviders({
+      balancesByAlpha3: {
+        // 7000 owed to orgs + (150 fees - 100 already withdrawn) = 7050.
+        UGA: [{ country: 'UGA', currency: 'UGX', balance: 7050 }],
+      },
+    });
+    const service = new ReconciliationService(prisma, pawapay);
+
+    const report = await service.check();
+    const uganda = report.pawapay.find((c) => c.countryCode === 'UG')!;
+
+    expect(uganda.totalPlatformFees).toBe(150);
+    expect(uganda.totalPlatformFeesWithdrawn).toBe(100);
+    expect(uganda.platformFeesAvailable).toBe(50);
+    expect(uganda.expectedTotal).toBe(7050);
     expect(uganda.drift).toBe(0);
   });
 
