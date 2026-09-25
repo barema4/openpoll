@@ -795,3 +795,161 @@ describe('TransactionsService.listForEvent', () => {
     ]);
   });
 });
+
+describe('TransactionsService.listAllForAdmin', () => {
+  function makeService(findMany: jest.Mock, count: jest.Mock) {
+    const prisma = {
+      transaction: { findMany, count },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    return new TransactionsService(prisma, audit, paystack, pawapay, email);
+  }
+
+  it('lists across every organization, with no eventId filter', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'txn-1' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const service = makeService(findMany, count);
+
+    const result = await service.listAllForAdmin({});
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, skip: 0, take: 10 }),
+    );
+    expect(result.total).toBe(1);
+  });
+
+  it('filters by organizationId via the event relation, and by status/gateway', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listAllForAdmin({
+      organizationId: 'org-1',
+      status: TransactionStatus.SUCCESS,
+      gateway: 'PAWAPAY',
+    });
+
+    const where = (
+      findMany.mock.calls[0][0] as { where: Record<string, unknown> }
+    ).where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        event: { organizationId: 'org-1' },
+        status: TransactionStatus.SUCCESS,
+        gateway: 'PAWAPAY',
+      }),
+    );
+  });
+
+  it('searches provider reference, event title, and organization name', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = makeService(findMany, count);
+
+    await service.listAllForAdmin({ search: 'grace' });
+
+    const where = (findMany.mock.calls[0][0] as { where: { OR: unknown[] } })
+      .where;
+    expect(where.OR).toEqual([
+      { providerReference: { contains: 'grace', mode: 'insensitive' } },
+      { event: { title: { contains: 'grace', mode: 'insensitive' } } },
+      {
+        event: {
+          organization: { name: { contains: 'grace', mode: 'insensitive' } },
+        },
+      },
+    ]);
+  });
+});
+
+describe('TransactionsService.listDisputesForAdmin', () => {
+  it('paginates and filters by status', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 'dispute-1' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      dispute: { findMany, count },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    const result = await service.listDisputesForAdmin({
+      status: DisputeStatus.PENDING,
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: DisputeStatus.PENDING } }),
+    );
+    expect(result.data).toEqual([{ id: 'dispute-1' }]);
+  });
+});
+
+describe('TransactionsService.updateDisputeStatus', () => {
+  it('sets resolvedAt when the override resolves the dispute, and audit-logs it', async () => {
+    const update = jest.fn().mockResolvedValue({
+      id: 'dispute-1',
+      status: DisputeStatus.RESOLVED,
+    });
+    const prisma = { dispute: { update } } as unknown as PrismaService;
+    const auditRecord = jest.fn();
+    const audit = { record: auditRecord } as unknown as AuditService;
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    await service.updateDisputeStatus('admin-1', 'dispute-1', {
+      status: DisputeStatus.RESOLVED,
+      resolution: 'merchant-accepted',
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'dispute-1' },
+      data: {
+        status: DisputeStatus.RESOLVED,
+        resolution: 'merchant-accepted',
+        resolvedAt: expect.any(Date),
+      },
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'admin-1',
+        action: 'DISPUTE_STATUS_OVERRIDDEN',
+      }),
+    );
+  });
+
+  it('clears resolvedAt for a non-resolved override', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'dispute-1' });
+    const prisma = { dispute: { update } } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new TransactionsService(
+      prisma,
+      audit,
+      paystack,
+      pawapay,
+      email,
+    );
+
+    await service.updateDisputeStatus('admin-1', 'dispute-1', {
+      status: DisputeStatus.AWAITING_BANK_FEEDBACK,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'dispute-1' },
+      data: {
+        status: DisputeStatus.AWAITING_BANK_FEEDBACK,
+        resolution: undefined,
+        resolvedAt: null,
+      },
+    });
+  });
+});

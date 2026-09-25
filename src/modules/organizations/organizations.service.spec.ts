@@ -707,3 +707,57 @@ describe('OrganizationsService.setBranding', () => {
     });
   });
 });
+
+describe('OrganizationsService.listAllForAdmin', () => {
+  const audit = { record: jest.fn() } as unknown as AuditService;
+  const payouts = {} as unknown as PayoutsService;
+  const config = {} as unknown as ConfigService;
+  const email = { send: jest.fn() } as unknown as EmailService;
+
+  it('lists across every organization (no user scoping) and excludes archived by default', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'org-1', name: 'Org One' }]);
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      organization: { findMany, count },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    const result = await service.listAllForAdmin({});
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { archivedAt: null } }),
+    );
+    expect(result.total).toBe(1);
+  });
+
+  it('filters by search and includes archived when requested', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const prisma = {
+      organization: { findMany, count },
+    } as unknown as PrismaService;
+    const service = new OrganizationsService(
+      prisma,
+      audit,
+      payouts,
+      config,
+      email,
+    );
+
+    await service.listAllForAdmin({ search: 'grace', includeArchived: true });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { contains: 'grace', mode: 'insensitive' } },
+      }),
+    );
+  });
+});

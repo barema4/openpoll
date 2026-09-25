@@ -258,3 +258,43 @@ describe('UsersService.changePassword', () => {
     );
   });
 });
+
+describe('UsersService.listAllForAdmin', () => {
+  it('searches by email or name across every user, and masks the phone number', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'user-1',
+        email: 'jane@example.com',
+        platformRole: null,
+        payoutMobileNumber: '254712345678',
+        memberships: [],
+      },
+    ]);
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      user: { findMany, count },
+    } as unknown as PrismaService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const service = new UsersService(
+      prisma,
+      {} as PayoutsService,
+      audit,
+      config,
+    );
+
+    const result = await service.listAllForAdmin({ search: 'jane' });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { email: { contains: 'jane', mode: 'insensitive' } },
+            { name: { contains: 'jane', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+    expect(result.data[0]).not.toHaveProperty('payoutMobileNumber');
+    expect(result.data[0]).toMatchObject({ payoutMobileNumberLast4: '5678' });
+  });
+});

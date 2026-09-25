@@ -21,6 +21,9 @@ import {
 } from '../../../generated/prisma/enums';
 import type { RecordManualTransactionDto } from './dto/record-manual-transaction.dto';
 import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
+import type { AdminListTransactionsQueryDto } from './dto/admin-list-transactions-query.dto';
+import type { AdminListDisputesQueryDto } from './dto/admin-list-disputes-query.dto';
+import type { UpdateDisputeStatusDto } from './dto/update-dispute-status.dto';
 import { paginate } from '../../common/pagination.util';
 import { dayAfter } from '../../common/date-range.util';
 
@@ -325,6 +328,68 @@ export class TransactionsService {
     }
   }
 
+  // Platform-wide dispute listing for staff support lookups (see
+  // AdminDisputesController) — every organization's disputes, not scoped to
+  // a single event the way the rest of this service is.
+  async listDisputesForAdmin(query: AdminListDisputesQueryDto) {
+    const { page = 1, pageSize = 10, status } = query;
+    const where: Prisma.DisputeWhereInput = { ...(status && { status }) };
+    const [data, total] = await Promise.all([
+      this.prisma.dispute.findMany({
+        where,
+        include: {
+          transaction: {
+            include: {
+              event: {
+                select: {
+                  id: true,
+                  title: true,
+                  organization: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.dispute.count({ where }),
+    ]);
+    return paginate(data, total, page, pageSize);
+  }
+
+  // Manual override for staff — a Dispute's status normally only moves via
+  // Paystack's own webhooks (handleDisputeEvent above); this covers
+  // resolutions reached outside the app (e.g. directly with the payer's
+  // bank) that no webhook will ever report.
+  async updateDisputeStatus(
+    userId: string,
+    disputeId: string,
+    dto: UpdateDisputeStatusDto,
+  ) {
+    const updated = await this.prisma.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: dto.status,
+        resolution: dto.resolution,
+        resolvedAt: dto.status === DisputeStatus.RESOLVED ? new Date() : null,
+      },
+    });
+
+    await this.audit.record({
+      userId,
+      action: 'DISPUTE_STATUS_OVERRIDDEN',
+      payload: {
+        disputeId,
+        status: dto.status,
+        resolution: dto.resolution ?? null,
+      },
+    });
+
+    return updated;
+  }
+
   // Emails the org's admins the moment a dispute opens — there's typically
   // a response deadline, so this is the one actionable moment worth
   // notifying on (reminders/resolution are audit-logged but don't re-notify).
@@ -407,6 +472,64 @@ export class TransactionsService {
       this.prisma.transaction.findMany({
         where,
         include: { disputes: true },
+        orderBy: { timestamp: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+    return paginate(data, total, page, pageSize);
+  }
+
+  // Platform-wide equivalent of listForEvent() — every organization's
+  // transactions, for staff support lookups (see AdminTransactionsController).
+  async listAllForAdmin(query: AdminListTransactionsQueryDto) {
+    const {
+      page = 1,
+      pageSize = 10,
+      search,
+      organizationId,
+      status,
+      gateway,
+      dateFrom,
+      dateTo,
+    } = query;
+    const where: Prisma.TransactionWhereInput = {
+      ...(status && { status }),
+      ...(gateway && { gateway }),
+      ...(organizationId && { event: { organizationId } }),
+      ...((dateFrom || dateTo) && {
+        timestamp: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo && { lt: dayAfter(dateTo) }),
+        },
+      }),
+      ...(search && {
+        OR: [
+          { providerReference: { contains: search, mode: 'insensitive' } },
+          { event: { title: { contains: search, mode: 'insensitive' } } },
+          {
+            event: {
+              organization: { name: { contains: search, mode: 'insensitive' } },
+            },
+          },
+        ],
+      }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        include: {
+          disputes: true,
+          refund: true,
+          event: {
+            select: {
+              id: true,
+              title: true,
+              organization: { select: { id: true, name: true } },
+            },
+          },
+        },
         orderBy: { timestamp: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,

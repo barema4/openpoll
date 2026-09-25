@@ -28,6 +28,7 @@ import type { SetBrandingDto } from './dto/set-branding.dto';
 import type { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { maskPhone } from '../payouts/mask-phone.util';
 import { paginate } from '../../common/pagination.util';
+import type { Prisma } from '../../../generated/prisma/client';
 
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -207,6 +208,29 @@ export class OrganizationsService {
     return this.prisma.organization
       .findUniqueOrThrow({ where: { id: organizationId } })
       .then(maskPhone);
+  }
+
+  // Platform-wide equivalent of listForUser() — every organization on the
+  // platform, not just the caller's own, for staff support lookups (see
+  // AdminOrganizationsController). A single direct query, unlike
+  // listForUser()'s two-source union, since there's no per-user membership
+  // to join against here.
+  async listAllForAdmin(query: ListOrganizationsQueryDto = {}) {
+    const { page = 1, pageSize = 10, search, includeArchived } = query;
+    const where: Prisma.OrganizationWhereInput = {
+      ...(includeArchived ? {} : { archivedAt: null }),
+      ...(search && { name: { contains: search, mode: 'insensitive' } }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.organization.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.organization.count({ where }),
+    ]);
+    return paginate(data.map(maskPhone), total, page, pageSize);
   }
 
   // Self-scoped (not org-scoped) — how a freshly logged-in user discovers

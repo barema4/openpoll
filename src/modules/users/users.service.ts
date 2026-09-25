@@ -17,7 +17,10 @@ import type { SetPayoutDto } from '../payouts/dto/set-payout.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { SetMobileMoneyPayoutDto } from '../payouts/dto/set-mobile-money-payout.dto';
+import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { maskPhone } from '../payouts/mask-phone.util';
+import { paginate } from '../../common/pagination.util';
+import type { Prisma } from '../../../generated/prisma/client';
 
 const BCRYPT_SALT_ROUNDS = 12;
 
@@ -66,6 +69,46 @@ export class UsersService {
       select: SELECT,
     });
     return this.toProfile(user);
+  }
+
+  // Platform-wide search by email/name for staff support lookups (see
+  // AdminUsersController) — not something a regular user can call. Includes
+  // each user's org memberships, since "which orgs is this account part of"
+  // is exactly what a support lookup needs.
+  async listAllForAdmin(query: ListUsersQueryDto = {}) {
+    const { page = 1, pageSize = 10, search } = query;
+    const where: Prisma.UserWhereInput = search
+      ? {
+          OR: [
+            { email: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+    const [rows, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          ...SELECT,
+          memberships: {
+            select: {
+              role: true,
+              organization: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return paginate(
+      rows.map((row) => this.toProfile(row)),
+      total,
+      page,
+      pageSize,
+    );
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
