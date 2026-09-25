@@ -18,10 +18,13 @@ export const envSchema = z.object({
     .min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
-  PAYSTACK_SECRET_KEY: z.string().min(1, 'PAYSTACK_SECRET_KEY is required'),
-  PAYSTACK_WEBHOOK_SECRET: z
-    .string()
-    .min(1, 'PAYSTACK_WEBHOOK_SECRET is required'),
+  // Paystack is retired as an active charge/payout rail (every country is
+  // PawaPay now) — PaystackProvider is kept wired up only to verify/refund
+  // transactions that were already processed through it before the Kenya
+  // cutover. Optional so dev/test/CI never need real Paystack credentials;
+  // only that historical-lookup path would actually fail without one.
+  PAYSTACK_SECRET_KEY: z.string().optional(),
+  PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
   // Country scope for the bank list / account resolution / subaccount
   // creation endpoints (Paystack's bank directory is per-country).
   PAYSTACK_COUNTRY: z.string().default('kenya'),
